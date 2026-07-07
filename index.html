@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能封面图</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #141821;
+    --panel-2: #1a1f2b;
+    --border: #262c3a;
+    --text: #e8ecf4;
+    --muted: #8b93a7;
+    --accent: #5b8cff;
+    --accent-2: #7c5bff;
+    --ok: #3ecf8e;
+    --err: #ff6b6b;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    min-height: 100vh;
+    padding: 14px 18px 20px;
+  }
+  .wrap { max-width: 1420px; margin: 0 auto; }
+
+  .topbar { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  h1 {
+    font-size: 18px; font-weight: 700; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h1 .logo {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .sub { color: var(--muted); font-size: 12px; }
+
+  .main {
+    display: grid; grid-template-columns: 1fr 480px; gap: 14px; align-items: start;
+  }
+  @media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px;
+  }
+
+  .input-row { display: flex; gap: 10px; }
+  input[type="text"] {
+    flex: 1; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 13px 16px; color: var(--text); font-size: 14px;
+    outline: none; transition: border-color .15s;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input::placeholder { color: #5a6275; }
+
+  button {
+    border: none; border-radius: 10px; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: #fff;
+    padding: 0 22px; transition: opacity .15s, transform .05s;
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: 8px 14px; font-weight: 500;
+  }
+  .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: #3a4255; }
+
+  .hint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .hint a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .status { margin-top: 6px; font-size: 12px; min-height: 16px; }
+  .status.err { color: var(--err); }
+  .status.ok { color: var(--ok); }
+  .status.busy { color: var(--muted); }
+
+  .frames { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  @media (max-width: 720px) { .frames { grid-template-columns: repeat(3, 1fr); } }
+  .frame {
+    background: var(--panel-2); border: 2px solid var(--border);
+    border-radius: 10px; overflow: hidden; position: relative; cursor: pointer;
+    transition: border-color .12s, transform .12s;
+  }
+  .frame:hover { transform: translateY(-2px); }
+  .frame.sel { border-color: var(--accent); }
+  .frame .badge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  }
+  .frame .ph {
+    aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+    color: #4a5268; font-size: 12px;
+    background: linear-gradient(100deg, var(--panel-2) 40%, #222838 50%, var(--panel-2) 60%);
+    background-size: 200% 100%;
+  }
+  .frame.loading .ph { animation: shimmer 1.2s infinite linear; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .frame img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+  .frame .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 8px; font-size: 11px; color: var(--muted);
+  }
+  .frame .bar button { font-size: 11px; padding: 2px 8px; }
+
+  .section-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 12px 0 10px; flex-wrap: wrap; gap: 8px;
+  }
+  .section-title h2 { font-size: 14px; font-weight: 600; }
+  .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+
+  .seg {
+    display: inline-flex; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .seg button {
+    background: transparent; color: var(--muted); border-radius: 0;
+    padding: 6px 10px; font-size: 12px; font-weight: 500;
+  }
+  .seg button.active { background: var(--accent); color: #fff; }
+
+  .order-strip {
+    display: flex; gap: 8px; justify-content: center;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .oitem { width: 98px; cursor: pointer; }
+  .oitem img, .oitem .ph2 {
+    width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;
+    border-radius: 8px; border: 1px solid var(--border);
+  }
+  .oitem .ph2 {
+    border-style: dashed; display: flex; align-items: center; justify-content: center;
+    color: #4a5268; font-size: 20px;
+  }
+  .oitem.active img, .oitem.active .ph2 {
+    border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+  }
+  .oitem .cap {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; color: var(--muted); margin-top: 4px;
+  }
+  .oitem .cap button { padding: 1px 7px; font-size: 11px; }
+
+  #result-box { text-align: center; }
+  #result {
+    display: none; max-width: 420px; width: 100%; margin: 0 auto;
+    border-radius: 10px; border: 1px solid var(--border);
+  }
+  #result-empty { color: #4a5268; font-size: 13px; padding: 40px 0; }
+  .pv-cap { display: none; color: var(--muted); font-size: 11px; margin: 10px 0 6px; }
+  .phone {
+    display: none; width: 100%; max-width: 300px; margin: 0 auto;
+    background: #0f1118; border: 1px solid var(--border); border-radius: 14px;
+    padding: 8px;
+    grid-template-columns: 1fr 1fr; gap: 8px 6px;
+  }
+  .tile { text-align: left; }
+  .tile img {
+    width: 100%; display: block; aspect-ratio: 16/9;
+    border-radius: 8px; background: #1a1f2b;
+  }
+  .tile .tl { height: 9px; background: #232a3a; border-radius: 4px; margin-top: 8px; }
+  .tile .tl.short { width: 55%; margin-top: 6px; }
+  .dl-row { margin-top: 12px; display: none; }
+  .dl-row button { padding: 9px 24px; }
+  .dl-note { color: var(--muted); font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1><span class="logo">🎬</span>智能封面图</h1>
+    <span class="sub">粘贴 m3u8 链接 · 智能选帧 · 三张拼成一张封面</span>
+  </div>
+
+  <div class="main">
+    <div class="card">
+      <div class="input-row">
+        <input type="text" id="url" placeholder="https://example.com/video/index.m3u8" spellcheck="false"
+               value="https://back_only.ffkm25.com/common/msdl//78bf95bf259326a3716ebb5661__1190615/hls/1/index.m3u8">
+        <button class="btn-primary" id="go" style="padding:11px 22px">生成封面</button>
+      </div>
+      <div class="status" id="status">智能选帧会自动避开黑屏和转场画面</div>
+      <div class="section-title">
+        <h2>候选帧 <span style="color:var(--muted);font-size:12px;font-weight:400">点击选帧，按布局用 1–4 张</span></h2>
+        <button class="btn-ghost" id="reroll-all" disabled>🎲 全部换一批</button>
+      </div>
+      <div class="frames" id="frames"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-top:0">
+        <h2>拼接结果 <span style="color:var(--muted);font-size:12px;font-weight:400">640×360 JPG</span></h2>
+        <div class="dl-row" id="dl-row" style="margin:0">
+          <button class="btn-primary" id="download-sm" style="padding:7px 16px;font-size:13px">⬇ 下载封面图</button>
+        </div>
+      </div>
+      <div id="layout" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+        <div class="seg">
+          <button data-l="h" class="active">横排</button>
+          <button data-l="big">1大2小</button>
+          <button data-l="bigr">2小1大</button>
+          <button data-l="top1">上1下2</button>
+          <button data-l="center">中间大</button>
+          <button data-l="diag">斜切</button>
+        </div>
+        <div class="seg" style="align-self:flex-start">
+          <button data-l="single">单图</button>
+          <button data-l="h2">两联</button>
+          <button data-l="diag2">斜切两联</button>
+          <button data-l="grid4">四宫格</button>
+          <button data-l="big3">1大3小</button>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="seg" id="logo-toggle">
+          <button data-lg="1" class="active">Logo</button>
+          <button data-lg="0">无 Logo</button>
+        </div>
+        <div class="seg" id="crop" title="按帧高比例裁掉每帧顶部，去除原视频水印">
+          <button data-c="0">不裁顶</button>
+          <button data-c="0.025">裁2.5%</button>
+          <button data-c="0.05">裁5%</button>
+          <button data-c="0.075" class="active">裁7.5%</button>
+        </div>
+      </div>
+      <div class="order-strip" id="order-strip"></div>
+      <div id="result-box">
+        <div id="result-empty">选满 3 张候选帧后自动拼接预览</div>
+        <div class="pv-cap" id="cap-full" style="margin-top:0">整张预览</div>
+        <canvas id="result"></canvas>
+        <div class="pv-cap" id="cap-phone">手机双列效果</div>
+        <div class="phone" id="phone">
+          <div class="tile"><img class="pv"><div class="tl"></div><div class="tl short"></div></div>
+          <div class="tile"><img class="pv"><div class="tl"></div><div class="tl short"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COUNT = 20;      // 候选帧数量
+const CONCURRENCY = 6; // 同时截帧的并发数
+// 每种布局需要的帧数
+const LAYOUT_NEED = {
+  h: 3, big: 3, bigr: 3, top1: 3, center: 3, diag: 3,
+  single: 1, h2: 2, diag2: 2, grid4: 4, big3: 4,
+};
+const $ = (id) => document.getElementById(id);
+const state = {
+  url: '',
+  duration: null,
+  frames: new Array(COUNT).fill(null), // {time, img: HTMLImageElement}
+  slots: [null, null, null],           // 卡槽：每格存候选帧下标，数量随布局变化
+  activeSlot: null,                    // 当前高亮的目标卡槽
+  layout: 'h',
+  logo: true,
+  cropTop: 0.075, // 顶部裁剪，占帧高的比例
+  running: false,
+};
+
+// 预载左上角 Logo 水印
+const logoImg = new Image();
+let logoReady = false;
+logoImg.onload = () => { logoReady = true; stitch(); };
+logoImg.src = '/logo.png';
+
+function setStatus(text, cls) {
+  const el = $('status');
+  el.textContent = text;
+  el.className = 'status ' + (cls || '');
+}
+
+const layoutNeed = () => LAYOUT_NEED[state.layout] || 3;
+
+/** 卡槽数量跟随当前布局 */
+function ensureSlots() {
+  const n = layoutNeed();
+  while (state.slots.length < n) state.slots.push(null);
+  state.slots.length = n;
+  if (state.activeSlot != null && state.activeSlot >= n) state.activeSlot = null;
+}
+
+const firstEmptySlot = () => {
+  const k = state.slots.indexOf(null);
+  return k < 0 ? null : k;
+};
+
+function renderFrameCards() {
+  ensureSlots();
+  const box = $('frames');
+  box.innerHTML = '';
+  for (let i = 0; i < COUNT; i++) {
+    const f = state.frames[i];
+    const order = state.slots.indexOf(i);
+    const div = document.createElement('div');
+    div.className =
+      'frame' + (f === 'loading' ? ' loading' : '') + (order >= 0 ? ' sel' : '');
+    if (f && f !== 'loading') {
+      div.innerHTML = `
+        ${order >= 0 ? `<div class="badge">${order + 1}</div>` : ''}
+        <img src="${f.img.src}">
+        <div class="bar">
+          <span>${fmtTime(f.time)}</span>
+          <button class="btn-ghost" onclick="event.stopPropagation();reroll(${i})">换一帧</button>
+        </div>`;
+      div.onclick = () => pickFrame(i);
+    } else {
+      div.innerHTML = `<div class="ph">${f === 'loading' ? '截取中' : '#' + (i + 1)}</div>`;
+    }
+    box.appendChild(div);
+  }
+  renderSlots();
+}
+
+/** 卡槽条：点卡槽指定目标位，点候选帧填入；可用 ←/→ 互换 */
+function renderSlots() {
+  const box = $('order-strip');
+  box.innerHTML = '';
+  state.slots.forEach((fi, pos) => {
+    const f = fi != null ? state.frames[fi] : null;
+    const filled = f && f !== 'loading';
+    const d = document.createElement('div');
+    d.className = 'oitem' + (state.activeSlot === pos ? ' active' : '') + (filled ? '' : ' empty');
+    if (filled) {
+      d.innerHTML = `
+        <img src="${f.img.src}">
+        <div class="cap">
+          <button class="btn-ghost" ${pos === 0 ? 'disabled' : ''} onclick="event.stopPropagation();moveSel(${pos},-1)">←</button>
+          <span>${pos + 1}号</span>
+          <button class="btn-ghost" ${pos === state.slots.length - 1 ? 'disabled' : ''} onclick="event.stopPropagation();moveSel(${pos},1)">→</button>
+        </div>`;
+    } else {
+      d.innerHTML = `
+        <div class="ph2">＋</div>
+        <div class="cap"><span style="margin:0 auto">${pos + 1}号 · 待填入</span></div>`;
+    }
+    d.onclick = () => {
+      state.activeSlot = state.activeSlot === pos ? null : pos;
+      renderFrameCards();
+    };
+    box.appendChild(d);
+  });
+}
+
+function moveSel(pos, dir) {
+  const j = pos + dir;
+  if (j < 0 || j >= state.slots.length) return;
+  [state.slots[pos], state.slots[j]] = [state.slots[j], state.slots[pos]];
+  renderFrameCards();
+  stitch();
+}
+window.moveSel = moveSel;
+
+/** 点候选帧：已在槽里则移除；否则填入高亮槽/第一个空槽，全满则替换最后一格 */
+function pickFrame(i) {
+  const f = state.frames[i];
+  if (!f || f === 'loading') return;
+  const cur = state.slots.indexOf(i);
+  if (cur >= 0) {
+    state.slots[cur] = null;
+    state.activeSlot = cur;
+  } else {
+    let t = state.activeSlot != null ? state.activeSlot : firstEmptySlot();
+    if (t == null) t = state.slots.length - 1;
+    state.slots[t] = i;
+    state.activeSlot = firstEmptySlot();
+  }
+  renderFrameCards();
+  stitch();
+}
+window.pickFrame = pickFrame;
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+async function fetchFrame(i) {
+  state.frames[i] = 'loading';
+  renderFrameCards();
+  const data = await api('/api/frame', {
+    url: state.url, duration: state.duration, index: i, count: COUNT,
+  });
+  const img = await loadImg(data.image);
+  state.frames[i] = { time: data.time, img };
+  renderFrameCards();
+  stitch();
+}
+
+/** 限并发地截取全部候选帧，返回失败数 */
+async function fetchAll() {
+  let next = 0, done = 0, failed = 0;
+  const worker = async () => {
+    while (next < COUNT) {
+      const i = next++;
+      try {
+        await fetchFrame(i);
+      } catch {
+        state.frames[i] = null;
+        failed++;
+        renderFrameCards();
+      }
+      done++;
+      setStatus(`智能选帧中… ${done}/${COUNT}`, 'busy');
+    }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  return failed;
+}
+
+async function generate() {
+  const url = $('url').value.trim();
+  if (!url) { setStatus('请先输入 m3u8 链接', 'err'); return; }
+  state.url = url;
+  state.running = true;
+  state.frames = new Array(COUNT).fill(null);
+  state.slots = Array.from({ length: layoutNeed() }, (_, k) => k); // 默认按顺序填前几张
+  state.activeSlot = null;
+  renderFrameCards();
+  $('go').disabled = true;
+  $('reroll-all').disabled = true;
+
+  try {
+    setStatus('正在解析视频信息…', 'busy');
+    const probe = await api('/api/probe', { url });
+    state.duration = probe.duration;
+    const failed = await fetchAll();
+    if (failed === COUNT) throw new Error('全部截帧失败，请检查链接');
+    setStatus(
+      failed ? `完成，但有 ${failed} 帧失败，可单独重试` : '✓ 已截取 ' + COUNT + ' 张候选帧',
+      failed ? 'err' : 'ok'
+    );
+  } catch (e) {
+    setStatus('✕ ' + e.message, 'err');
+    renderFrameCards();
+  } finally {
+    state.running = false;
+    $('go').disabled = false;
+    $('reroll-all').disabled = false;
+  }
+}
+
+async function reroll(i) {
+  if (state.running || !state.url) return;
+  try {
+    await fetchFrame(i);
+  } catch (e) {
+    state.frames[i] = null;
+    renderFrameCards();
+    setStatus('✕ 第 ' + (i + 1) + ' 帧截取失败：' + e.message, 'err');
+  }
+}
+window.reroll = reroll;
+
+$('reroll-all').onclick = async () => {
+  if (state.running || !state.url) return;
+  state.running = true;
+  $('go').disabled = true;
+  $('reroll-all').disabled = true;
+  try {
+    const failed = await fetchAll();
+    setStatus(failed ? `完成，但有 ${failed} 帧失败` : '✓ 已更换全部候选帧', failed ? 'err' : 'ok');
+  } finally {
+    state.running = false;
+    $('go').disabled = false;
+    $('reroll-all').disabled = false;
+  }
+};
+
+// ---------- Canvas 拼接（固定输出 1280×720 高清） ----------
+const OUT_W = 1280, OUT_H = 720;
+
+function stitch() {
+  ensureSlots();
+  const picked = state.slots.map((fi) => (fi != null ? state.frames[fi] : null));
+  const missing = picked.filter((f) => !f || f === 'loading').length;
+  if (missing > 0) {
+    if (state.frames.some((f) => f && f !== 'loading')) {
+      setStatus(`还差 ${missing} 张：点击候选帧填入空位`, 'busy');
+    }
+    return;
+  }
+  const [a, b, c, d] = picked.map((f) => f.img);
+  const canvas = $('result');
+  const ctx = canvas.getContext('2d');
+  canvas.width = OUT_W;
+  canvas.height = OUT_H;
+  paintBg(ctx, canvas);
+  const W = OUT_W, H = OUT_H;
+
+  if (state.layout === 'h') {
+    // 横排：三列等宽
+    const cw = Math.round(W / 3);
+    drawCover(ctx, a, 0, 0, cw, H);
+    drawCover(ctx, b, cw, 0, cw, H);
+    drawCover(ctx, c, cw * 2, 0, W - cw * 2, H);
+  } else if (state.layout === 'big') {
+    // 1大2小：左大图，右两张上下叠
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
+    drawCover(ctx, a, 0, 0, bigW, H);
+    drawCover(ctx, b, bigW, 0, sw, sh);
+    drawCover(ctx, c, bigW, sh, sw, sh);
+  } else if (state.layout === 'bigr') {
+    // 2小1大：左两张上下叠，右大图
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
+    drawCover(ctx, b, 0, 0, sw, sh);
+    drawCover(ctx, c, 0, sh, sw, sh);
+    drawCover(ctx, a, sw, 0, bigW, H);
+  } else if (state.layout === 'top1') {
+    // 上1下2：上面一张通栏，下面两张各占一半
+    const th = Math.round(H / 2);
+    drawCover(ctx, a, 0, 0, W, th);
+    drawCover(ctx, b, 0, th, W / 2, H - th);
+    drawCover(ctx, c, W / 2, th, W / 2, H - th);
+  } else if (state.layout === 'center') {
+    // 中间大：窄-宽-窄 三联，突出中间
+    const side = Math.round(W / 4), mid = W - side * 2;
+    drawCover(ctx, a, 0, 0, side, H);
+    drawCover(ctx, b, side, 0, mid, H);
+    drawCover(ctx, c, side + mid, 0, side, H);
+  } else if (state.layout === 'single') {
+    // 单图
+    drawCover(ctx, a, 0, 0, W, H);
+  } else if (state.layout === 'h2') {
+    // 两联：左右各半
+    const cw = Math.round(W / 2);
+    drawCover(ctx, a, 0, 0, cw, H);
+    drawCover(ctx, b, cw, 0, W - cw, H);
+  } else if (state.layout === 'diag2') {
+    // 斜切两联：一条斜线分割
+    const s = 64, m = W / 2;
+    const panels = [
+      [[0, 0], [m + s, 0], [m - s, H], [0, H]],
+      [[m + s, 0], [W, 0], [W, H], [m - s, H]],
+    ];
+    [a, b].forEach((img, i) => {
+      const poly = panels[i];
+      const xs = poly.map((p) => p[0]);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      ctx.save();
+      ctx.beginPath();
+      poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.clip();
+      drawCover(ctx, img, minX, 0, maxX - minX, H);
+      ctx.restore();
+    });
+  } else if (state.layout === 'grid4') {
+    // 四宫格：2×2
+    const cw = Math.round(W / 2), ch = Math.round(H / 2);
+    drawCover(ctx, a, 0, 0, cw, ch);
+    drawCover(ctx, b, cw, 0, W - cw, ch);
+    drawCover(ctx, c, 0, ch, cw, H - ch);
+    drawCover(ctx, d, cw, ch, W - cw, H - ch);
+  } else if (state.layout === 'big3') {
+    // 1大3小：左大图，右一列三张
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 3;
+    drawCover(ctx, a, 0, 0, bigW, H);
+    drawCover(ctx, b, bigW, 0, sw, sh);
+    drawCover(ctx, c, bigW, sh, sw, sh);
+    drawCover(ctx, d, bigW, sh * 2, sw, sh);
+  } else {
+    // 斜切：三块平行斜线分割的面板
+    const s = 56; // 斜线水平偏移量
+    const b1 = W / 3, b2 = (W / 3) * 2;
+    const panels = [
+      [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
+      [[b1 + s, 0], [b2 + s, 0], [b2 - s, H], [b1 - s, H]],
+      [[b2 + s, 0], [W, 0], [W, H], [b2 - s, H]],
+    ];
+    [a, b, c].forEach((img, i) => {
+      const poly = panels[i];
+      const xs = poly.map((p) => p[0]);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      ctx.save();
+      ctx.beginPath();
+      poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.clip();
+      drawCover(ctx, img, minX, 0, maxX - minX, H);
+      ctx.restore();
+    });
+  }
+
+  // 左上角盖 Logo：不加底板，用多层黑色投影把 logo 从画面里衬出来
+  if (state.logo && logoReady) {
+    const lw = 400;
+    const lh = Math.round(lw * logoImg.naturalHeight / logoImg.naturalWidth);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+    ctx.shadowBlur = 18;
+    ctx.drawImage(logoImg, 24, 24, lw, lh); // 画两遍加深阴影轮廓
+    ctx.drawImage(logoImg, 24, 24, lw, lh);
+    ctx.restore();
+  }
+
+  // 更新整张预览 + 手机双列预览
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  document.querySelectorAll('.pv').forEach((img) => (img.src = dataUrl));
+  $('result-empty').style.display = 'none';
+  canvas.style.display = 'block';
+  $('cap-full').style.display = 'block';
+  $('cap-phone').style.display = 'block';
+  $('phone').style.display = 'grid';
+  $('dl-row').style.display = 'block';
+  updateDownloads();
+}
+
+function paintBg(ctx, canvas) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+/**
+ * 等比缩放裁剪填满目标区域（object-fit: cover）。
+ * 先按比例掐掉源图顶部（去原视频水印），再在剩余区域内取景。
+ */
+function drawCover(ctx, img, x, y, dw, dh) {
+  const top = Math.min(state.cropTop, 0.2) * img.naturalHeight;
+  const availW = img.naturalWidth;
+  const availH = img.naturalHeight - top;
+  const sRatio = availW / availH;
+  const dRatio = dw / dh;
+  let sw = availW, sh = availH, sx = 0, sy = top;
+  if (sRatio > dRatio) {
+    sw = sh * dRatio;
+    sx = (availW - sw) / 2;
+  } else {
+    sh = sw / dRatio;
+    sy = top + (availH - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, dw, dh);
+}
+
+$('layout').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.layout = btn.dataset.l;
+  $('layout').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+  renderFrameCards(); // 卡槽数量随布局变化
+  stitch();
+};
+$('logo-toggle').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.logo = btn.dataset.lg === '1';
+  [...$('logo-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+$('crop').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.cropTop = Number(btn.dataset.c);
+  [...$('crop').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+
+// ---------- 导出：640×360 JPG 压缩（在 1280 画布上合成后超采样缩小） ----------
+let smallBlob = null, exportSeq = 0;
+
+const toBlobAsync = (cv, type, q) => new Promise((r) => cv.toBlob(r, type, q));
+const kb = (n) => (n / 1024).toFixed(0) + 'KB';
+
+async function updateDownloads() {
+  const seq = ++exportSeq;
+  const small = document.createElement('canvas');
+  small.width = 640; small.height = 360;
+  small.getContext('2d').drawImage($('result'), 0, 0, 640, 360);
+  const sm = await toBlobAsync(small, 'image/jpeg', 0.8);
+  if (seq !== exportSeq) return; // 期间又重新拼接了，丢弃本次结果
+  smallBlob = sm;
+  $('download-sm').textContent = `⬇ 下载封面图 · ${kb(sm.size)}`;
+}
+
+$('download-sm').onclick = () => {
+  if (!smallBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(smallBlob);
+  a.download = `cover-640x360-${Date.now()}.jpg`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$('go').onclick = generate;
+$('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') generate(); });
+
+renderFrameCards();
+</script>
+</body>
+</html>
