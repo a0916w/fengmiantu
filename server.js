@@ -1,10 +1,12 @@
 /**
  * 智能封面图 — m3u8 自动选帧截图服务
  *
- * 依赖：本机 ffmpeg / ffprobe（无 npm 依赖）
+ * 依赖：本机 ffmpeg / ffprobe（FTP 上传零 npm 依赖，手写）
  * 启动：node server.js  （默认 http://localhost:3000）
  */
 const http = require('http');
+const https = require('https');
+const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -48,7 +50,7 @@ function readJsonBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 1024 * 64) {
+      if (data.length > 4 * 1024 * 1024) {
         reject(new Error('body too large'));
         req.destroy();
       }
@@ -126,6 +128,130 @@ function pickTime(duration, index, count) {
   return 3 + index * 8 + Math.random() * 4;
 }
 
+// ---------- 发布封面：上传 + 回调 webmm ----------
+
+/** dataURL(image/webp|jpeg|png) → { buffer, ext }。非法返回 null。 */
+function decodeDataUrl(dataUrl) {
+  const m = /^data:image\/(webp|jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m) return null;
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+  const buffer = Buffer.from(m[2], 'base64');
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) return null;
+  return { buffer, ext };
+}
+
+/**
+ * 上传封面，返回可公开访问的完整 URL。
+ * - 测试/本地：设 COVER_UPLOAD_STUB_DIR 时写本地文件，URL = FTP_URL_PREFIX + '/' + 文件名。
+ * - 生产：走 FTP（被动模式 STOR，二进制），URL = FTP_URL_PREFIX + '/' + 文件名。
+ */
+async function uploadCover(buffer, filename) {
+  const prefix = (process.env.FTP_URL_PREFIX || '').replace(/\/+$/, '');
+  if (!prefix) throw new Error('未配置 FTP_URL_PREFIX（回传给 webmm 的图片地址前缀）');
+
+  const stubDir = process.env.COVER_UPLOAD_STUB_DIR;
+  if (stubDir) {
+    await fs.promises.mkdir(stubDir, { recursive: true });
+    await fs.promises.writeFile(path.join(stubDir, filename), buffer);
+  } else {
+    await ftpStore(buffer, filename);
+  }
+  return prefix + '/' + filename;
+}
+
+/** 最小 FTP 客户端：被动模式二进制 STOR 单文件。零 npm 依赖。 */
+function ftpStore(buffer, filename) {
+  const host = process.env.FTP_HOST;
+  const port = parseInt(process.env.FTP_PORT || '21', 10);
+  const user = process.env.FTP_USER;
+  const pass = process.env.FTP_PASS || '';
+  const dir = (process.env.FTP_DIR || '').replace(/\/+$/, '');
+  if (!host || !user) return Promise.reject(new Error('未配置 FTP_HOST / FTP_USER'));
+
+  return new Promise((resolve, reject) => {
+    const ctrl = net.connect({ host, port });
+    ctrl.setEncoding('utf8');
+    ctrl.setTimeout(30_000);
+
+    let buf = '';
+    let waiter = null;
+    const done = (err) => { try { ctrl.destroy(); } catch {} err ? reject(err) : resolve(); };
+
+    ctrl.on('data', (chunk) => {
+      buf += chunk;
+      let idx;
+      while ((idx = buf.indexOf('\r\n')) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        if (/^\d{3} /.test(line) && waiter) { const w = waiter; waiter = null; w(line); }
+      }
+    });
+    ctrl.on('timeout', () => done(new Error('FTP 控制连接超时')));
+    ctrl.on('error', (e) => done(e));
+
+    const expect = (codes) => new Promise((res, rej) => {
+      waiter = (line) => {
+        const code = parseInt(line.slice(0, 3), 10);
+        codes.includes(code) ? res(line) : rej(new Error('FTP 应答 ' + line.slice(0, 60)));
+      };
+    });
+    const cmd = (c) => { ctrl.write(c + '\r\n'); };
+
+    (async () => {
+      await expect([220]);
+      cmd('USER ' + user); await expect([331, 230]);
+      if (pass) { cmd('PASS ' + pass); await expect([230]); }
+      cmd('TYPE I'); await expect([200]);
+      cmd('PASV');
+      const pasv = await expect([227]);
+      const mm = /(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)/.exec(pasv);
+      if (!mm) throw new Error('PASV 解析失败');
+      const dataHost = mm.slice(1, 5).join('.');
+      const dataPort = (parseInt(mm[5], 10) << 8) + parseInt(mm[6], 10);
+
+      const remote = (dir ? dir + '/' : '') + filename;
+      const data = net.connect({ host: dataHost, port: dataPort });
+      data.setTimeout(30_000);
+      const dataClosed = new Promise((res, rej) => {
+        data.on('error', rej);
+        data.on('timeout', () => rej(new Error('FTP 数据连接超时')));
+        data.on('close', res);
+      });
+      await new Promise((res, rej) => { data.on('connect', res); data.on('error', rej); });
+
+      cmd('STOR ' + remote);
+      await expect([150, 125]);
+      data.end(buffer);
+      await dataClosed;
+      await expect([226, 250]);
+      cmd('QUIT');
+      done(null);
+    })().catch(done);
+  });
+}
+
+/** POST JSON 到任意 http(s) URL（回调 webmm）。 */
+function httpPostJson(urlStr, obj) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(urlStr); } catch { return reject(new Error('回调地址非法')); }
+    const body = Buffer.from(JSON.stringify(obj));
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request(u, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length },
+      timeout: 20_000,
+    }, (resp) => {
+      let d = '';
+      resp.on('data', (c) => (d += c));
+      resp.on('end', () => resolve({ status: resp.statusCode, body: d }));
+    });
+    req.on('timeout', () => req.destroy(new Error('回调超时')));
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
 // ---------- HTTP ----------
 
 const server = http.createServer(async (req, res) => {
@@ -176,6 +302,31 @@ const server = http.createServer(async (req, res) => {
           error: '截帧失败',
           detail: String(e.stderr || e.message).slice(0, 500),
         });
+      }
+    }
+
+    if (req.method === 'POST' && req.url === '/api/publish') {
+      const { image, external_id: externalId, callback } = await readJsonBody(req);
+      if (!externalId || typeof externalId !== 'string') return sendJson(res, 400, { error: '缺少 external_id' });
+      if (!isAllowedUrl(callback)) return sendJson(res, 400, { error: '回调地址非法' });
+      const decoded = decodeDataUrl(image);
+      if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
+
+      const safeId = externalId.replace(/[^A-Za-z0-9_-]/g, '');
+      const filename = `cover-${safeId}-${crypto.randomBytes(4).toString('hex')}.${decoded.ext}`;
+      try {
+        const url = await uploadCover(decoded.buffer, filename);
+        const cb = await httpPostJson(callback, {
+          status: 'completed',
+          external_id: externalId,
+          outputs: [{ url, selection_score: 1 }],
+        });
+        if (cb.status < 200 || cb.status >= 300) {
+          return sendJson(res, 502, { error: 'webmm 回调失败', detail: `HTTP ${cb.status} ${String(cb.body).slice(0, 200)}` });
+        }
+        return sendJson(res, 200, { ok: true, url });
+      } catch (e) {
+        return sendJson(res, 502, { error: '发布封面失败', detail: String(e.message).slice(0, 300) });
       }
     }
 

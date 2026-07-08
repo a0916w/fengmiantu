@@ -202,6 +202,7 @@
         <h2>拼接结果 <span style="color:var(--muted);font-size:12px;font-weight:400">640×360 JPG</span></h2>
         <div class="dl-row" id="dl-row" style="margin:0">
           <button class="btn-primary" id="download-sm" style="padding:7px 16px;font-size:13px">⬇ 下载封面图</button>
+          <button class="btn-primary" id="use-cover" disabled style="padding:7px 16px;font-size:13px;display:none;background:var(--accent2,#22c55e)">✓ 用作封面</button>
         </div>
       </div>
       <div id="layout" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
@@ -701,6 +702,8 @@ async function updateDownloads() {
   if (seq !== exportSeq) return; // 期间又重新拼接了，丢弃本次结果
   smallBlob = sm;
   $('download-sm').textContent = `⬇ 下载封面图 · ${kb(sm.size)}`;
+  const uc = $('use-cover');
+  if (uc && uc.style.display !== 'none') { uc.disabled = false; uc.textContent = '✓ 用作封面'; }
 }
 
 $('download-sm').onclick = () => {
@@ -716,6 +719,51 @@ $('go').onclick = generate;
 $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') generate(); });
 
 renderFrameCards();
+
+// ---------- 后台「手动选封面」对接 ----------
+// URL 参数：?m3u8=&external_id=&sign=&callback=（callback 已含 ?sign=，回写时原样 POST）。
+const PICK = new URLSearchParams(location.search);
+const PICK_EXTERNAL = PICK.get('external_id');
+const PICK_CALLBACK = PICK.get('callback');
+
+const blobToDataUrl = (b) => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(r.result);
+  r.onerror = rej;
+  r.readAsDataURL(b);
+});
+
+$('use-cover').onclick = async () => {
+  if (!PICK_EXTERNAL || !PICK_CALLBACK) return alert('缺少回调参数，无法回写');
+  if (!smallBlob) return alert('请先生成封面');
+  const btn = $('use-cover');
+  btn.disabled = true; btn.textContent = '上传中…';
+  try {
+    const image = await blobToDataUrl(smallBlob);
+    const r = await fetch('/api/publish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image, external_id: PICK_EXTERNAL, callback: PICK_CALLBACK }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || j.detail || '上传失败');
+    btn.textContent = '✓ 已更新封面';
+    alert('封面已更新，可关闭本页返回后台');
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '✓ 用作封面';
+    alert(e.message);
+  }
+};
+
+// 从后台跳来：自动填 m3u8、亮出「用作封面」、自动生成。
+(function initFromQuery() {
+  const m3u8 = PICK.get('m3u8');
+  if (m3u8) $('url').value = m3u8;
+  if (PICK_EXTERNAL && PICK_CALLBACK) {
+    const b = $('use-cover');
+    b.style.display = '';
+    if (m3u8 && typeof generate === 'function') generate();
+  }
+})();
 </script>
 </body>
 </html>
