@@ -285,13 +285,17 @@ function callbackAllowed(urlStr) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    // 只按【路径】匹配，忽略查询串——从 webmm 跳来时带 ?m3u8=&external_id=...，
+    // 否则 req.url === '/' 不成立会误落 404。
+    const pathname = (req.url || '/').split('?')[0];
+
+    if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
       const html = await fs.promises.readFile(path.join(__dirname, 'index.html'));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(html);
     }
 
-    if (req.method === 'GET' && req.url === '/logo.png') {
+    if (req.method === 'GET' && pathname === '/logo.png') {
       try {
         const png = await fs.promises.readFile(path.join(__dirname, 'logo.png'));
         res.writeHead(200, { 'Content-Type': 'image/png' });
