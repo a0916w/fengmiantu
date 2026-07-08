@@ -252,6 +252,35 @@ function httpPostJson(urlStr, obj) {
   });
 }
 
+/**
+ * 回调地址是否放行（防 SSRF）：
+ * - 必须 http(s)；
+ * - 永远拒绝云元数据 / 回环 / 链路本地地址（169.254.x、127.x、::1、localhost）；
+ * - 配了 COVER_CALLBACK_HOSTS（逗号分隔主机名）则必须命中白名单。
+ * 生产务必配 COVER_CALLBACK_HOSTS = webmm 的域名。
+ */
+function callbackAllowed(urlStr) {
+  let host;
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    host = u.hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  // 元数据 / 链路本地：永远拒绝（云元数据 SSRF 常用），任何开关都不放开。
+  if (host === '169.254.169.254' || /^169\.254\./.test(host)) {
+    return false;
+  }
+  // 回环：默认拒绝，仅测试用 COVER_CALLBACK_ALLOW_LOOPBACK 放开。
+  if (host === 'localhost' || host === '::1' || /^127\./.test(host)) {
+    return !!process.env.COVER_CALLBACK_ALLOW_LOOPBACK;
+  }
+  const allow = (process.env.COVER_CALLBACK_HOSTS || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return allow.length === 0 ? true : allow.includes(host);
+}
+
 // ---------- HTTP ----------
 
 const server = http.createServer(async (req, res) => {
@@ -308,7 +337,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/publish') {
       const { image, external_id: externalId, callback } = await readJsonBody(req);
       if (!externalId || typeof externalId !== 'string') return sendJson(res, 400, { error: '缺少 external_id' });
-      if (!isAllowedUrl(callback)) return sendJson(res, 400, { error: '回调地址非法' });
+      // 回调地址防 SSRF：拒元数据/回环，配了白名单则必须命中。
+      if (!callbackAllowed(callback)) return sendJson(res, 400, { error: '回调地址不被允许' });
       const decoded = decodeDataUrl(image);
       if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
 
@@ -322,11 +352,15 @@ const server = http.createServer(async (req, res) => {
           outputs: [{ url, selection_score: 1 }],
         });
         if (cb.status < 200 || cb.status >= 300) {
-          return sendJson(res, 502, { error: 'webmm 回调失败', detail: `HTTP ${cb.status} ${String(cb.body).slice(0, 200)}` });
+          // 不回显回调响应体（可能含内部信息）；细节只落服务端日志。
+          console.error('[publish] callback non-2xx', cb.status, String(cb.body).slice(0, 300));
+          return sendJson(res, 502, { error: 'webmm 回调失败' });
         }
         return sendJson(res, 200, { ok: true, url });
       } catch (e) {
-        return sendJson(res, 502, { error: '发布封面失败', detail: String(e.message).slice(0, 300) });
+        // 不把内部错误（FTP 地址/路径等）回给调用方；只落日志。
+        console.error('[publish] failed', e && e.message);
+        return sendJson(res, 502, { error: '发布封面失败' });
       }
     }
 

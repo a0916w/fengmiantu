@@ -65,7 +65,7 @@ function postJson(port, urlPath, obj) {
   // 起 fengmiantu server（stub 上传模式）
   const srv = spawn('node', ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(FM_PORT), COVER_UPLOAD_STUB_DIR: STUB_DIR, FTP_URL_PREFIX: URL_PREFIX },
+    env: { ...process.env, PORT: String(FM_PORT), COVER_UPLOAD_STUB_DIR: STUB_DIR, FTP_URL_PREFIX: URL_PREFIX, COVER_CALLBACK_ALLOW_LOOPBACK: '1' },
     stdio: 'ignore',
   });
 
@@ -100,6 +100,17 @@ function postJson(port, urlPath, obj) {
     assert.strictEqual(bad.status, 400, 'reject empty external_id');
     const badCb = await postJson(FM_PORT, '/api/publish', { image: WEBP_1PX, external_id: 'x', callback: 'ftp://nope' });
     assert.strictEqual(badCb.status, 400, 'reject non-http callback');
+
+    // 5) SSRF 防护：云元数据 IP 永远被拒（即使开了 loopback 放行开关）
+    const metaBefore = received;
+    const ssrf = await postJson(FM_PORT, '/api/publish', {
+      image: WEBP_1PX, external_id: 'x', callback: 'http://169.254.169.254/latest/meta-data/',
+    });
+    assert.strictEqual(ssrf.status, 400, 'reject metadata SSRF');
+    assert.strictEqual(received, metaBefore, 'no callback fired for blocked SSRF');
+
+    // 6) 错误响应不回显内部细节（回调 body / 内部错误信息）
+    assert.ok(!('detail' in (bad.json || {})), 'no detail leak');
 
     console.log('PUBLISH_TEST_PASS');
   } catch (e) {
