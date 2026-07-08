@@ -166,12 +166,13 @@ function ftpStore(buffer, filename) {
   const user = process.env.FTP_USER;
   const pass = process.env.FTP_PASS || '';
   const dir = (process.env.FTP_DIR || '').replace(/\/+$/, '');
+  const timeoutMs = parseInt(process.env.FTP_TIMEOUT_MS || '360000', 10); // 默认 360s，可 env 调
   if (!host || !user) return Promise.reject(new Error('未配置 FTP_HOST / FTP_USER'));
 
   return new Promise((resolve, reject) => {
     const ctrl = net.connect({ host, port });
     ctrl.setEncoding('utf8');
-    ctrl.setTimeout(30_000);
+    ctrl.setTimeout(timeoutMs);
 
     let buf = '';
     let waiter = null;
@@ -211,7 +212,7 @@ function ftpStore(buffer, filename) {
 
       const remote = (dir ? dir + '/' : '') + filename;
       const data = net.connect({ host: dataHost, port: dataPort });
-      data.setTimeout(30_000);
+      data.setTimeout(timeoutMs);
       const dataClosed = new Promise((res, rej) => {
         data.on('error', rej);
         data.on('timeout', () => rej(new Error('FTP 数据连接超时')));
