@@ -1,56 +1,81 @@
 #!/usr/bin/env bash
-# fengmiantu 一键部署（Ubuntu/Debian）。
-# 用法：先改下面「改这里」的环境变量，再执行： sudo bash deploy.sh
+# fengmiantu 一键部署（Ubuntu/Debian）。 用法： sudo bash deploy.sh
+#
+# 安全说明：
+#  - FTP 密码等秘钥【不写进本脚本、也不写进 systemd unit】（unit 是全局可读的），
+#    而是写到 /etc/fengmiantu.env（chmod 600，仅 root 可读），systemd 用 EnvironmentFile 加载。
+#  - 服务用专用非 root 用户 fengmiantu 运行（对外服务不该用 root）。
+#  - 首次运行若 /etc/fengmiantu.env 不存在，脚本会生成一份【占位模板】，
+#    你去把里面的值改成真的、再重跑本脚本即可（真秘钥只留在这台机的 600 文件里，不进 git）。
 set -euo pipefail
 
-# ===== 改这里 =====
-FTP_HOST="ftp.你的图床.com"
-FTP_PORT="21"
-FTP_USER="xxxxx"
-FTP_PASS="xxxxx"
-FTP_DIR="/covers"                                  # FTP 远端目录，可留空
-FTP_URL_PREFIX="https://cdn.你的图床.com/covers"    # 上面目录对外的 http 前缀（回给 webmm 的图片地址）
-COVER_CALLBACK_HOSTS="mm.你的webmm域名.com"          # 防 SSRF：只放行回调到 webmm 域名
 PORT="3000"
 APP_DIR="/opt/fengmiantu"
+ENV_FILE="/etc/fengmiantu.env"
+SVC_USER="fengmiantu"
 REPO="https://github.com/a0916w/fengmiantu.git"
-# ==================
+
+[ "$(id -u)" -eq 0 ] || { echo "请用 root 运行： sudo bash deploy.sh"; exit 1; }
 
 # 1. 依赖（ffmpeg 截帧 / node 跑服务）
 apt-get update -y
 apt-get install -y ffmpeg nodejs git
 
-# 2. 拉代码
+# 2. 专用非 root 运行用户
+id -u "$SVC_USER" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
+
+# 3. 拉代码
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" pull --ff-only
 else
   git clone "$REPO" "$APP_DIR"
 fi
+chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR"
 
-# 3. systemd 服务（开机自启 + 崩溃重拉）
+# 4. 秘钥文件（600，仅 root）——不存在则生成占位模板并退出让你去填
+if [ ! -f "$ENV_FILE" ]; then
+  cat > "$ENV_FILE" <<'ENVEOF'
+# fengmiantu 秘钥/配置（chmod 600，勿提交 git）。改完真值后重跑 deploy.sh。
+FTP_HOST=ftp.你的图床.com
+FTP_PORT=21
+FTP_USER=xxxxx
+FTP_PASS=xxxxx
+FTP_DIR=/covers
+# 上面 FTP 目录对外的 http 前缀（回给 webmm 的图片地址）
+FTP_URL_PREFIX=https://cdn.你的图床.com/covers
+# 防 SSRF：只放行回调到 webmm 域名（多个逗号分隔）
+COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
+ENVEOF
+  chmod 600 "$ENV_FILE"
+  chown root:root "$ENV_FILE"
+  echo ">>> 已生成占位配置 $ENV_FILE ——请编辑填入真实 FTP/webmm 值，然后重跑： sudo bash deploy.sh"
+  exit 0
+fi
+chmod 600 "$ENV_FILE"
+
+# 5. systemd 服务（非 root 运行 + 秘钥走 EnvironmentFile，不进全局可读的 unit）
 cat > /etc/systemd/system/fengmiantu.service <<EOF
 [Unit]
 Description=fengmiantu cover picker
 After=network.target
 
 [Service]
+User=$SVC_USER
 WorkingDirectory=$APP_DIR
 ExecStart=$(command -v node) server.js
 Restart=always
 Environment=PORT=$PORT
-Environment=FTP_HOST=$FTP_HOST
-Environment=FTP_PORT=$FTP_PORT
-Environment=FTP_USER=$FTP_USER
-Environment=FTP_PASS=$FTP_PASS
-Environment=FTP_DIR=$FTP_DIR
-Environment=FTP_URL_PREFIX=$FTP_URL_PREFIX
-Environment=COVER_CALLBACK_HOSTS=$COVER_CALLBACK_HOSTS
+EnvironmentFile=$ENV_FILE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# 4. 启动
+# 6. 启动
 systemctl daemon-reload
 systemctl enable --now fengmiantu
 sleep 1
@@ -59,5 +84,5 @@ systemctl --no-pager status fengmiantu || true
 IP=$(hostname -I | awk '{print $1}')
 echo "----------------------------------------"
 echo "起好了：http://${IP}:${PORT}  （记得安全组放行 ${PORT} 端口）"
-echo "改配置后重启： sudo systemctl restart fengmiantu"
-echo "看日志：       sudo journalctl -u fengmiantu -f"
+echo "改配置：编辑 $ENV_FILE 后  sudo systemctl restart fengmiantu"
+echo "看日志：sudo journalctl -u fengmiantu -f"
