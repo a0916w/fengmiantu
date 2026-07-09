@@ -27,6 +27,15 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
 const store = createStore(DATA_DIR);
 const logos = createLogos(LOGOS_DIR);
+
+// 首启种子：logos 为空且根目录有 logo.png → 存为 'default'，纳入 /logos 管理，
+// 手动工具与 media-videos 默认用它；chigua 等再另传新 logo。
+try {
+  if (logos.list().length === 0) {
+    const seedPath = path.join(__dirname, 'logo.png');
+    if (fs.existsSync(seedPath)) logos.save('default', fs.readFileSync(seedPath));
+  }
+} catch (e) { console.error('[logo seed] failed', e && e.message); }
 const queue = createQueue({
   store,
   concurrency: CONCURRENCY,
@@ -154,6 +163,19 @@ const server = http.createServer(async (req, res) => {
         console.error('[publish] failed', e && e.message);
         return sendJson(res, 502, { error: '发布封面失败' });
       }
+    }
+
+    // ---------- 公开 logo 端点（给手动工具选 logo 用，非机密，无需 admin）----------
+    if (req.method === 'GET' && pathname === '/logo-list') {
+      return sendJson(res, 200, { logos: logos.list(), default: logos.exists('default') ? 'default' : (logos.list()[0] || null) });
+    }
+    if (req.method === 'GET' && pathname.startsWith('/logo-img/')) {
+      let name = pathname.slice('/logo-img/'.length);
+      if (name.endsWith('.png')) name = name.slice(0, -4);
+      const p = logos.pathOf(name);
+      if (!p) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      return res.end(fs.readFileSync(p));
     }
 
     // ---------- 多项目封面 API（异步 + 回调）----------
