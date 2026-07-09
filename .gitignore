@@ -1,0 +1,8 @@
+node_modules/
+
+# runtime data — persistent on server, keep out of git
+data/
+logos/
+
+# brainstorming specs — local only, do not commit
+docs/superpowers/
