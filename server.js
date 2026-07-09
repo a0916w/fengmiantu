@@ -35,7 +35,8 @@ const queue = createQueue({
     if (!job.callback) return;
     const body = result.error
       ? { status: 'failed', job_id: job.id, external_id: job.externalId, error: result.error }
-      : { status: 'completed', job_id: job.id, external_id: job.externalId, url: result.url };
+      // 成功回调带超集：url（通用）+ outputs[]（兼容 webmm 现成的封面回调，取 selection_score 最高那张）
+      : { status: 'completed', job_id: job.id, external_id: job.externalId, url: result.url, outputs: [{ url: result.url, selection_score: 1 }] };
     try { await httpPostJson(job.callback, body); }
     catch (e) { console.error('[cover] callback failed', job.id, e && e.message); }
   },
