@@ -227,6 +227,7 @@
           <button data-lg="1" class="active">Logo</button>
           <button data-lg="0">无 Logo</button>
         </div>
+        <select id="logo-select" title="选择 logo" style="height:34px;border-radius:8px;border:1px solid var(--border,#2a3140);background:var(--panel-2,#1f2530);color:inherit;padding:0 8px;font:inherit"></select>
         <div class="seg" id="crop" title="按帧高比例裁掉每帧顶部，去除原视频水印">
           <button data-c="0">不裁顶</button>
           <button data-c="0.025">裁2.5%</button>
@@ -274,7 +275,19 @@ const state = {
 const logoImg = new Image();
 let logoReady = false;
 logoImg.onload = () => { logoReady = true; stitch(); };
-logoImg.src = '/logo.png';
+logoImg.onerror = () => { logoReady = false; };
+function setLogo(name) { logoReady = false; logoImg.src = '/logo-img/' + encodeURIComponent(name) + '.png'; }
+// 拉 logo 列表填下拉；失败则退回内置 /logo.png
+fetch('/logo-list').then((r) => r.json()).then((d) => {
+  const sel = document.getElementById('logo-select');
+  const names = (d && d.logos) || [];
+  if (!names.length) { logoImg.src = '/logo.png'; sel.style.display = 'none'; return; }
+  sel.innerHTML = names.map((n) => '<option value="' + n + '">' + n + '</option>').join('');
+  const def = (d && d.default) || names[0];
+  sel.value = def;
+  sel.onchange = () => setLogo(sel.value);
+  setLogo(def);
+}).catch(() => { logoImg.src = '/logo.png'; const s = document.getElementById('logo-select'); if (s) s.style.display = 'none'; });
 
 function setStatus(text, cls) {
   const el = $('status');
