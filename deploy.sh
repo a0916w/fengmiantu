@@ -24,11 +24,14 @@ apt-get install -y ffmpeg nodejs git
 # 2. 专用非 root 运行用户
 id -u "$SVC_USER" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
 
-# 3. 拉代码
+# 3. 拉代码 —— 以服务账户 $SVC_USER 身份跑 git：属主自己操作既无 dubious-ownership 报错，
+# 也不给 root 信任一个服务账户可写的库（否则被埋 .git/hooks 会以 root 执行 = 提权）。
+# $SVC_USER 是 nologin 无家目录账户，显式给 HOME=$APP_DIR 供 git 写配置。
+install -d -o "$SVC_USER" -g "$SVC_USER" "$APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" pull --ff-only
+  sudo -u "$SVC_USER" env HOME="$APP_DIR" git -C "$APP_DIR" pull --ff-only
 else
-  git clone "$REPO" "$APP_DIR"
+  sudo -u "$SVC_USER" env HOME="$APP_DIR" git clone "$REPO" "$APP_DIR"
 fi
 chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR"
 
