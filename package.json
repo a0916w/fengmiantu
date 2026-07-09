@@ -1,13 +1,10 @@
 {
   "name": "fengmiantu",
   "version": "1.0.0",
-  "description": "智能封面图 — m3u8 自动选帧截图 + 多项目封面 API",
+  "description": "智能封面图 — m3u8 自动选帧截图 + 拼接封面工具（取景/自由裁剪/马赛克/OCR去文字/锐化）",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test"
-  },
-  "dependencies": {
-    "@napi-rs/canvas": "^0.1.100"
   }
 }
