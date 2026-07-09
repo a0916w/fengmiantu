@@ -13,6 +13,10 @@ Node 服务（`server.js` + `lib/` + `index.html` + `logo.png`），一个 npm �
 ```bash
 node -v      # >= 16 即可
 ffmpeg -version && ffprobe -version   # 没有就装：apt install -y ffmpeg  /  yum install -y ffmpeg
+
+# 「自动去文字」功能的 OCR（可选但推荐；不装则该功能自动关闭，其余不受影响）
+apt install -y tesseract-ocr tesseract-ocr-chi-sim   # yum: tesseract + tesseract-langpack-chi_sim
+tesseract --list-langs                                # 确认列表里有 chi_sim
 ```
 
 ## 2. 放代码

@@ -154,6 +154,7 @@
   #result {
     display: none; max-width: 420px; width: 100%; margin: 0 auto;
     border-radius: 10px; border: 1px solid var(--border);
+    cursor: grab; touch-action: none;
   }
   #result-empty { color: #4a5268; font-size: 13px; padding: 40px 0; }
   .pv-cap { display: none; color: var(--muted); font-size: 11px; margin: 10px 0 6px; }
@@ -182,11 +183,26 @@
     <span class="sub">粘贴 m3u8 链接 · 智能选帧 · 三张拼成一张封面</span>
   </div>
 
+  <!-- 自由裁剪弹窗 -->
+  <div id="crop-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:50;align-items:center;justify-content:center">
+    <div class="card" style="max-width:760px;width:94%">
+      <div class="section-title" style="margin-top:0">
+        <h2>自由裁剪 <span style="color:var(--muted);font-size:12px;font-weight:400">在图上框选要保留的区域</span></h2>
+      </div>
+      <canvas id="crop-canvas" style="width:100%;border-radius:8px;cursor:crosshair;touch-action:none"></canvas>
+      <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-ghost" id="crop-reset">重置为全图</button>
+        <button class="btn-ghost" id="crop-cancel">取消</button>
+        <button class="btn-primary" id="crop-ok" style="padding:8px 22px">应用</button>
+      </div>
+    </div>
+  </div>
+
   <div class="main">
     <div class="card">
       <div class="input-row">
         <input type="text" id="url" placeholder="https://example.com/video/index.m3u8" spellcheck="false"
-               value="https://back_only.ffkm25.com/common/msdl//78bf95bf259326a3716ebb5661__1190615/hls/1/index.m3u8">
+               value="https://back_only.ffkm25.com/common/msdl//dd140d5457926a329f7198bf2__1183554/hls/1/index.m3u8">
         <button class="btn-primary" id="go" style="padding:11px 22px">生成封面</button>
       </div>
       <div class="status" id="status">智能选帧会自动避开黑屏和转场画面</div>
@@ -227,17 +243,34 @@
           <button data-lg="1" class="active">Logo</button>
           <button data-lg="0">无 Logo</button>
         </div>
+        <div class="seg" id="sharpen-toggle" title="高清锐利化整张封面">
+          <button data-sp="1" class="active">锐化</button>
+          <button data-sp="0">原图</button>
+        </div>
+        <div class="seg" id="detext-toggle" title="自动打蒙画面中检测到的文字（水印/字幕/广告字）">
+          <button data-dt="1" class="active">去文字</button>
+          <button data-dt="0">保留文字</button>
+        </div>
         <div class="seg" id="crop" title="按帧高比例裁掉每帧顶部，去除原视频水印">
           <button data-c="0">不裁顶</button>
           <button data-c="0.025">裁2.5%</button>
           <button data-c="0.05">裁5%</button>
           <button data-c="0.075" class="active">裁7.5%</button>
         </div>
+        <div class="seg" id="mode" title="取景：拖动/滚轮调整画面；马赛克：在图上框选打码">
+          <button data-m="pan" class="active">取景</button>
+          <button data-m="mosaic">马赛克</button>
+        </div>
+        <div class="seg" id="mosaic-style" title="马赛克样式：打蒙=模糊更自然，颗粒=像素块">
+          <button data-s="blur" class="active">打蒙</button>
+          <button data-s="pixel">颗粒</button>
+        </div>
+        <button class="btn-ghost" id="mosaic-undo" style="padding:6px 10px;font-size:12px">撤销马赛克</button>
       </div>
       <div class="order-strip" id="order-strip"></div>
       <div id="result-box">
         <div id="result-empty">选满 3 张候选帧后自动拼接预览</div>
-        <div class="pv-cap" id="cap-full" style="margin-top:0">整张预览</div>
+        <div class="pv-cap" id="cap-full" style="margin-top:0">整张预览 · 取景模式：拖动调整、滚轮缩放 · 马赛克模式：框选打码</div>
         <canvas id="result"></canvas>
         <div class="pv-cap" id="cap-phone">手机双列效果</div>
         <div class="phone" id="phone">
@@ -263,6 +296,13 @@ const state = {
   duration: null,
   frames: new Array(COUNT).fill(null), // {time, img: HTMLImageElement}
   slots: [null, null, null],           // 卡槽：每格存候选帧下标，数量随布局变化
+  offsets: [],                         // 每格取景偏移 {fx, fy, z}，拖动/滚轮调整
+  crops: [],                           // 每格自由裁剪 {x,y,w,h}（0~1 比例，默认全图）
+  sharpen: true,                       // 整图锐化（反锐化掩模）
+  detext: true,                        // 自动打蒙画面里检测到的文字
+  mode: 'pan',                         // 预览交互模式：pan 取景 / mosaic 马赛克
+  mosaicStyle: 'blur',                 // 马赛克样式：blur 打蒙 / pixel 颗粒
+  mosaics: [],                         // 马赛克区域 [{x,y,w,h}]，画布坐标
   activeSlot: null,                    // 当前高亮的目标卡槽
   layout: 'h',
   logo: true,
@@ -289,6 +329,10 @@ function ensureSlots() {
   const n = layoutNeed();
   while (state.slots.length < n) state.slots.push(null);
   state.slots.length = n;
+  while (state.offsets.length < n) state.offsets.push({ fx: 0.5, fy: 0.5, z: 1 });
+  state.offsets.length = n;
+  while (state.crops.length < n) state.crops.push({ x: 0, y: 0, w: 1, h: 1 });
+  state.crops.length = n;
   if (state.activeSlot != null && state.activeSlot >= n) state.activeSlot = null;
 }
 
@@ -334,11 +378,14 @@ function renderSlots() {
     const d = document.createElement('div');
     d.className = 'oitem' + (state.activeSlot === pos ? ' active' : '') + (filled ? '' : ' empty');
     if (filled) {
+      const c = state.crops[pos];
+      const cropped = c && (c.x > 0 || c.y > 0 || c.w < 1 || c.h < 1);
       d.innerHTML = `
         <img src="${f.img.src}">
         <div class="cap">
           <button class="btn-ghost" ${pos === 0 ? 'disabled' : ''} onclick="event.stopPropagation();moveSel(${pos},-1)">←</button>
           <span>${pos + 1}号</span>
+          <button class="btn-ghost" title="自由裁剪" ${cropped ? 'style="color:var(--accent);border-color:var(--accent)"' : ''} onclick="event.stopPropagation();openCrop(${pos})">✂</button>
           <button class="btn-ghost" ${pos === state.slots.length - 1 ? 'disabled' : ''} onclick="event.stopPropagation();moveSel(${pos},1)">→</button>
         </div>`;
     } else {
@@ -358,6 +405,9 @@ function moveSel(pos, dir) {
   const j = pos + dir;
   if (j < 0 || j >= state.slots.length) return;
   [state.slots[pos], state.slots[j]] = [state.slots[j], state.slots[pos]];
+  [state.crops[pos], state.crops[j]] = [state.crops[j], state.crops[pos]]; // 裁剪跟着图走
+  state.offsets[pos] = { fx: 0.5, fy: 0.5, z: 1 };
+  state.offsets[j] = { fx: 0.5, fy: 0.5, z: 1 };
   renderFrameCards();
   stitch();
 }
@@ -370,11 +420,15 @@ function pickFrame(i) {
   const cur = state.slots.indexOf(i);
   if (cur >= 0) {
     state.slots[cur] = null;
+    state.offsets[cur] = { fx: 0.5, fy: 0.5, z: 1 };
+    state.crops[cur] = { x: 0, y: 0, w: 1, h: 1 };
     state.activeSlot = cur;
   } else {
     let t = state.activeSlot != null ? state.activeSlot : firstEmptySlot();
     if (t == null) t = state.slots.length - 1;
     state.slots[t] = i;
+    state.offsets[t] = { fx: 0.5, fy: 0.5, z: 1 };
+    state.crops[t] = { x: 0, y: 0, w: 1, h: 1 };
     state.activeSlot = firstEmptySlot();
   }
   renderFrameCards();
@@ -414,7 +468,7 @@ async function fetchFrame(i) {
     url: state.url, duration: state.duration, index: i, count: COUNT,
   });
   const img = await loadImg(data.image);
-  state.frames[i] = { time: data.time, img };
+  state.frames[i] = { time: data.time, img, textBoxes: data.textBoxes || [] };
   renderFrameCards();
   stitch();
 }
@@ -447,6 +501,9 @@ async function generate() {
   state.running = true;
   state.frames = new Array(COUNT).fill(null);
   state.slots = Array.from({ length: layoutNeed() }, (_, k) => k); // 默认按顺序填前几张
+  state.offsets = state.slots.map(() => ({ fx: 0.5, fy: 0.5, z: 1 }));
+  state.crops = state.slots.map(() => ({ x: 0, y: 0, w: 1, h: 1 }));
+  state.mosaics = [];
   state.activeSlot = null;
   renderFrameCards();
   $('go').disabled = true;
@@ -502,7 +559,7 @@ $('reroll-all').onclick = async () => {
 // ---------- Canvas 拼接（固定输出 1280×720 高清） ----------
 const OUT_W = 1280, OUT_H = 720;
 
-function stitch() {
+function stitch(light) {
   ensureSlots();
   const picked = state.slots.map((fi) => (fi != null ? state.frames[fi] : null));
   const missing = picked.filter((f) => !f || f === 'loading').length;
@@ -520,99 +577,30 @@ function stitch() {
   paintBg(ctx, canvas);
   const W = OUT_W, H = OUT_H;
 
-  if (state.layout === 'h') {
-    // 横排：三列等宽
-    const cw = Math.round(W / 3);
-    drawCover(ctx, a, 0, 0, cw, H);
-    drawCover(ctx, b, cw, 0, cw, H);
-    drawCover(ctx, c, cw * 2, 0, W - cw * 2, H);
-  } else if (state.layout === 'big') {
-    // 1大2小：左大图，右两张上下叠
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
-    drawCover(ctx, a, 0, 0, bigW, H);
-    drawCover(ctx, b, bigW, 0, sw, sh);
-    drawCover(ctx, c, bigW, sh, sw, sh);
-  } else if (state.layout === 'bigr') {
-    // 2小1大：左两张上下叠，右大图
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
-    drawCover(ctx, b, 0, 0, sw, sh);
-    drawCover(ctx, c, 0, sh, sw, sh);
-    drawCover(ctx, a, sw, 0, bigW, H);
-  } else if (state.layout === 'top1') {
-    // 上1下2：上面一张通栏，下面两张各占一半
-    const th = Math.round(H / 2);
-    drawCover(ctx, a, 0, 0, W, th);
-    drawCover(ctx, b, 0, th, W / 2, H - th);
-    drawCover(ctx, c, W / 2, th, W / 2, H - th);
-  } else if (state.layout === 'center') {
-    // 中间大：窄-宽-窄 三联，突出中间
-    const side = Math.round(W / 4), mid = W - side * 2;
-    drawCover(ctx, a, 0, 0, side, H);
-    drawCover(ctx, b, side, 0, mid, H);
-    drawCover(ctx, c, side + mid, 0, side, H);
-  } else if (state.layout === 'single') {
-    // 单图
-    drawCover(ctx, a, 0, 0, W, H);
-  } else if (state.layout === 'h2') {
-    // 两联：左右各半
-    const cw = Math.round(W / 2);
-    drawCover(ctx, a, 0, 0, cw, H);
-    drawCover(ctx, b, cw, 0, W - cw, H);
-  } else if (state.layout === 'diag2') {
-    // 斜切两联：一条斜线分割
-    const s = 64, m = W / 2;
-    const panels = [
-      [[0, 0], [m + s, 0], [m - s, H], [0, H]],
-      [[m + s, 0], [W, 0], [W, H], [m - s, H]],
-    ];
-    [a, b].forEach((img, i) => {
-      const poly = panels[i];
-      const xs = poly.map((p) => p[0]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const cells = layoutCells(W, H);
+  lastCells = cells;
+  cells.forEach((cell, i) => {
+    const img = picked[i].img;
+    const off = state.offsets[i] || { fx: 0.5, fy: 0.5, z: 1 };
+    const crop = state.crops[i];
+    if (cell.poly) {
       ctx.save();
       ctx.beginPath();
-      poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      cell.poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath();
       ctx.clip();
-      drawCover(ctx, img, minX, 0, maxX - minX, H);
+      drawCover(ctx, img, cell.x, cell.y, cell.w, cell.h, off, crop);
       ctx.restore();
-    });
-  } else if (state.layout === 'grid4') {
-    // 四宫格：2×2
-    const cw = Math.round(W / 2), ch = Math.round(H / 2);
-    drawCover(ctx, a, 0, 0, cw, ch);
-    drawCover(ctx, b, cw, 0, W - cw, ch);
-    drawCover(ctx, c, 0, ch, cw, H - ch);
-    drawCover(ctx, d, cw, ch, W - cw, H - ch);
-  } else if (state.layout === 'big3') {
-    // 1大3小：左大图，右一列三张
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 3;
-    drawCover(ctx, a, 0, 0, bigW, H);
-    drawCover(ctx, b, bigW, 0, sw, sh);
-    drawCover(ctx, c, bigW, sh, sw, sh);
-    drawCover(ctx, d, bigW, sh * 2, sw, sh);
-  } else {
-    // 斜切：三块平行斜线分割的面板
-    const s = 56; // 斜线水平偏移量
-    const b1 = W / 3, b2 = (W / 3) * 2;
-    const panels = [
-      [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
-      [[b1 + s, 0], [b2 + s, 0], [b2 - s, H], [b1 - s, H]],
-      [[b2 + s, 0], [W, 0], [W, H], [b2 - s, H]],
-    ];
-    [a, b, c].forEach((img, i) => {
-      const poly = panels[i];
-      const xs = poly.map((p) => p[0]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      ctx.save();
-      ctx.beginPath();
-      poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.closePath();
-      ctx.clip();
-      drawCover(ctx, img, minX, 0, maxX - minX, H);
-      ctx.restore();
-    });
-  }
+    } else {
+      drawCover(ctx, img, cell.x, cell.y, cell.w, cell.h, off, crop);
+    }
+  });
+
+  if (state.sharpen && !light) sharpenCanvas(ctx, canvas, 3, 0.9); // 锐化在打码和 logo 之前
+
+  if (state.detext && !light) applyTextBlur(ctx, canvas, cells, picked); // 自动打蒙文字
+
+  applyMosaics(ctx, canvas);
 
   // 左上角盖 Logo：不加底板，用多层黑色投影把 logo 从画面里衬出来
   if (state.logo && logoReady) {
@@ -626,9 +614,9 @@ function stitch() {
     ctx.restore();
   }
 
-  // 更新整张预览 + 手机双列预览
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  document.querySelectorAll('.pv').forEach((img) => (img.src = dataUrl));
+  if (light) return; // 拖动过程中只重绘画布，跳过下面的重活
+
+  // 手机双列预览在 updateDownloads 里用 640 成品图更新（所见即所得）
   $('result-empty').style.display = 'none';
   canvas.style.display = 'block';
   $('cap-full').style.display = 'block';
@@ -644,25 +632,496 @@ function paintBg(ctx, canvas) {
 }
 
 /**
- * 等比缩放裁剪填满目标区域（object-fit: cover）。
- * 先按比例掐掉源图顶部（去原视频水印），再在剩余区域内取景。
+ * 高清锐利化：反锐化掩模 sharpened = orig + amount × (orig − blur(radius))。
+ * radius 要按画布分辨率选：1280 画布用 3px（缩小显示后仍可见），640 导出用 1px。
  */
-function drawCover(ctx, img, x, y, dw, dh) {
-  const top = Math.min(state.cropTop, 0.2) * img.naturalHeight;
-  const availW = img.naturalWidth;
-  const availH = img.naturalHeight - top;
-  const sRatio = availW / availH;
-  const dRatio = dw / dh;
-  let sw = availW, sh = availH, sx = 0, sy = top;
-  if (sRatio > dRatio) {
-    sw = sh * dRatio;
-    sx = (availW - sw) / 2;
-  } else {
-    sh = sw / dRatio;
-    sy = top + (availH - sh) / 2;
+function sharpenCanvas(ctx, canvas, radius = 3, amount = 0.7) {
+  const w = canvas.width, h = canvas.height;
+  mosaicTmp.width = w; mosaicTmp.height = h;
+  const t = mosaicTmp.getContext('2d');
+  t.filter = `blur(${radius}px)`;
+  t.drawImage(canvas, 0, 0);
+  t.filter = 'none';
+  const orig = ctx.getImageData(0, 0, w, h);
+  const blur = t.getImageData(0, 0, w, h);
+  const o = orig.data, b = blur.data;
+  for (let i = 0; i < o.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const v = o[i + c] + amount * (o[i + c] - b[i + c]);
+      o[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+    }
   }
-  ctx.drawImage(img, sx, sy, sw, sh, x, y, dw, dh);
+  ctx.putImageData(orig, 0, 0);
 }
+
+/** 自动打蒙：把每格取景窗内检测到的文字框映射到画布坐标后模糊掉 */
+function applyTextBlur(ctx, canvas, cells, picked) {
+  cells.forEach((cell, i) => {
+    const f = picked[i];
+    if (!f || !f.textBoxes || !f.textBoxes.length) return;
+    const img = f.img;
+    const off = state.offsets[i] || { fx: 0.5, fy: 0.5, z: 1 };
+    const w = coverWindow(img, cell.w, cell.h, off, state.crops[i]);
+    const W0 = img.naturalWidth, H0 = img.naturalHeight;
+    f.textBoxes.forEach((b) => {
+      // 文字框（源图像素）与取景窗求交
+      const x0 = Math.max(b.x * W0, w.sx), y0 = Math.max(b.y * H0, w.sy);
+      const x1 = Math.min((b.x + b.w) * W0, w.sx + w.sw);
+      const y1 = Math.min((b.y + b.h) * H0, w.sy + w.sh);
+      if (x1 - x0 < 4 || y1 - y0 < 4) return;
+      // 映射到画布坐标并按文字高度外扩，保证盖住描边
+      const scaleX = cell.w / w.sw, scaleY = cell.h / w.sh;
+      const pad = (y1 - y0) * 0.4;
+      let cx = cell.x + (x0 - w.sx - pad) * scaleX;
+      let cy = cell.y + (y0 - w.sy - pad) * scaleY;
+      let cw2 = (x1 - x0 + pad * 2) * scaleX;
+      let ch2 = (y1 - y0 + pad * 2) * scaleY;
+      // 钳制在画布内
+      if (cx < 0) { cw2 += cx; cx = 0; }
+      if (cy < 0) { ch2 += cy; cy = 0; }
+      cw2 = Math.min(canvas.width - cx, cw2);
+      ch2 = Math.min(canvas.height - cy, ch2);
+      if (cw2 < 4 || ch2 < 4) return;
+      blurPatch(ctx, canvas, Math.round(cx), Math.round(cy), Math.round(cw2), Math.round(ch2));
+    });
+  });
+}
+
+// ---------- 马赛克 ----------
+const mosaicTmp = document.createElement('canvas');
+
+function applyMosaics(ctx, canvas) {
+  state.mosaics.forEach((r) => {
+    const x = Math.max(0, Math.round(r.x)), y = Math.max(0, Math.round(r.y));
+    const w = Math.min(canvas.width - x, Math.round(r.w));
+    const h = Math.min(canvas.height - y, Math.round(r.h));
+    if (w < 4 || h < 4) return;
+    if ((r.style || 'blur') === 'pixel') pixelate(ctx, canvas, x, y, w, h);
+    else blurPatch(ctx, canvas, x, y, w, h);
+  });
+}
+
+/** 颗粒：经典像素块化 */
+function pixelate(ctx, canvas, x, y, w, h) {
+  const BLOCK = 18;
+  const bw = Math.max(1, Math.round(w / BLOCK));
+  const bh = Math.max(1, Math.round(h / BLOCK));
+  mosaicTmp.width = bw; mosaicTmp.height = bh;
+  const t = mosaicTmp.getContext('2d');
+  t.imageSmoothingEnabled = true;
+  t.drawImage(canvas, x, y, w, h, 0, 0, bw, bh);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(mosaicTmp, 0, 0, bw, bh, x, y, w, h);
+  ctx.imageSmoothingEnabled = true;
+}
+
+/** 打蒙：重高斯模糊 + 羽化边缘，观感比色块自然 */
+function blurPatch(ctx, canvas, x, y, w, h) {
+  const blur = Math.max(18, Math.min(40, Math.min(w, h) / 5));
+  const pad = Math.round(blur * 2);
+  const x0 = Math.max(0, x - pad), y0 = Math.max(0, y - pad);
+  const x1 = Math.min(canvas.width, x + w + pad), y1 = Math.min(canvas.height, y + h + pad);
+  const pw = x1 - x0, ph = y1 - y0;
+  mosaicTmp.width = pw; mosaicTmp.height = ph;
+  const t = mosaicTmp.getContext('2d');
+  t.filter = `blur(${blur}px)`;
+  t.drawImage(canvas, x0, y0, pw, ph, 0, 0, pw, ph);
+  t.filter = 'none';
+  // 羽化：只保留框选中心，边缘渐隐过渡
+  const feather = 14;
+  t.globalCompositeOperation = 'destination-in';
+  t.filter = `blur(${feather}px)`;
+  t.fillStyle = '#fff';
+  t.fillRect(x - x0 + feather / 2, y - y0 + feather / 2, w - feather, h - feather);
+  t.filter = 'none';
+  t.globalCompositeOperation = 'source-over';
+  ctx.drawImage(mosaicTmp, 0, 0, pw, ph, x0, y0, pw, ph);
+}
+
+/** 当前布局的单元格列表，下标与卡槽一一对应；斜切布局带裁剪多边形 */
+function layoutCells(W, H) {
+  const L = state.layout;
+  if (L === 'h') {
+    const cw = Math.round(W / 3);
+    return [
+      { x: 0, y: 0, w: cw, h: H },
+      { x: cw, y: 0, w: cw, h: H },
+      { x: cw * 2, y: 0, w: W - cw * 2, h: H },
+    ];
+  }
+  if (L === 'big') {
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
+    return [
+      { x: 0, y: 0, w: bigW, h: H },
+      { x: bigW, y: 0, w: sw, h: sh },
+      { x: bigW, y: sh, w: sw, h: sh },
+    ];
+  }
+  if (L === 'bigr') {
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
+    return [
+      { x: sw, y: 0, w: bigW, h: H },
+      { x: 0, y: 0, w: sw, h: sh },
+      { x: 0, y: sh, w: sw, h: sh },
+    ];
+  }
+  if (L === 'top1') {
+    const th = Math.round(H / 2);
+    return [
+      { x: 0, y: 0, w: W, h: th },
+      { x: 0, y: th, w: W / 2, h: H - th },
+      { x: W / 2, y: th, w: W / 2, h: H - th },
+    ];
+  }
+  if (L === 'center') {
+    const side = Math.round(W / 4), mid = W - side * 2;
+    return [
+      { x: 0, y: 0, w: side, h: H },
+      { x: side, y: 0, w: mid, h: H },
+      { x: side + mid, y: 0, w: side, h: H },
+    ];
+  }
+  if (L === 'single') return [{ x: 0, y: 0, w: W, h: H }];
+  if (L === 'h2') {
+    const cw = Math.round(W / 2);
+    return [
+      { x: 0, y: 0, w: cw, h: H },
+      { x: cw, y: 0, w: W - cw, h: H },
+    ];
+  }
+  if (L === 'grid4') {
+    const cw = Math.round(W / 2), ch = Math.round(H / 2);
+    return [
+      { x: 0, y: 0, w: cw, h: ch },
+      { x: cw, y: 0, w: W - cw, h: ch },
+      { x: 0, y: ch, w: cw, h: H - ch },
+      { x: cw, y: ch, w: W - cw, h: H - ch },
+    ];
+  }
+  if (L === 'big3') {
+    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 3;
+    return [
+      { x: 0, y: 0, w: bigW, h: H },
+      { x: bigW, y: 0, w: sw, h: sh },
+      { x: bigW, y: sh, w: sw, h: sh },
+      { x: bigW, y: sh * 2, w: sw, h: sh },
+    ];
+  }
+  // 斜切系列：平行斜线分割
+  const polys =
+    L === 'diag2'
+      ? (() => {
+          const s = 64, m = W / 2;
+          return [
+            [[0, 0], [m + s, 0], [m - s, H], [0, H]],
+            [[m + s, 0], [W, 0], [W, H], [m - s, H]],
+          ];
+        })()
+      : (() => {
+          const s = 56, b1 = W / 3, b2 = (W / 3) * 2;
+          return [
+            [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
+            [[b1 + s, 0], [b2 + s, 0], [b2 - s, H], [b1 - s, H]],
+            [[b2 + s, 0], [W, 0], [W, H], [b2 - s, H]],
+          ];
+        })();
+  return polys.map((poly) => {
+    const xs = poly.map((p) => p[0]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    return { x: minX, y: 0, w: maxX - minX, h: H, poly };
+  });
+}
+
+/**
+ * 等比缩放裁剪填满目标区域（object-fit: cover）。
+ * 先按比例掐掉源图顶部（去原视频水印），再在剩余区域内取景；
+ * off.fx / off.fy（0~1，0.5 居中）控制取景窗位置，可拖动调整；
+ * off.z（≥1，默认 1）为缩放倍数，越大取景窗越小 = 画面越放大。
+ */
+function coverWindow(img, dw, dh, off, crop) {
+  const W0 = img.naturalWidth, H0 = img.naturalHeight;
+  const c = crop || { x: 0, y: 0, w: 1, h: 1 };
+  const left = c.x * W0;
+  const availW = Math.max(16, c.w * W0);
+  // 顶部：全局裁顶和自由裁剪取更深的那个
+  const top = Math.max(Math.min(state.cropTop, 0.2) * H0, c.y * H0);
+  const availH = Math.max(16, (c.y + c.h) * H0 - top);
+  const dRatio = dw / dh;
+  let sw = availW, sh = availH;
+  if (availW / availH > dRatio) sw = sh * dRatio;
+  else sh = sw / dRatio;
+  const z = Math.max(1, off.z || 1);
+  sw /= z; sh /= z;
+  return {
+    sw, sh,
+    sx: left + (availW - sw) * off.fx,
+    sy: top + (availH - sh) * off.fy,
+    slackX: availW - sw,
+    slackY: availH - sh,
+  };
+}
+
+function drawCover(ctx, img, x, y, dw, dh, off = { fx: 0.5, fy: 0.5, z: 1 }, crop) {
+  const w = coverWindow(img, dw, dh, off, crop);
+  ctx.drawImage(img, w.sx, w.sy, w.sw, w.sh, x, y, dw, dh);
+}
+
+// ---------- 拖动调整取景 ----------
+let lastCells = [];
+let drag = null;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+function pointInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if (yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function cellIndexAt(p) {
+  for (let i = 0; i < lastCells.length; i++) {
+    const c = lastCells[i];
+    const hit = c.poly
+      ? pointInPoly(p, c.poly)
+      : p.x >= c.x && p.x < c.x + c.w && p.y >= c.y && p.y < c.y + c.h;
+    if (hit) return i;
+  }
+  return -1;
+}
+
+const resultCanvas = $('result');
+
+function canvasPoint(e) {
+  const rect = resultCanvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (resultCanvas.width / rect.width),
+    y: (e.clientY - rect.top) * (resultCanvas.height / rect.height),
+  };
+}
+
+let mosaicDraft = null; // 正在框选的马赛克区域
+
+resultCanvas.addEventListener('pointerdown', (e) => {
+  if (state.mode === 'mosaic') {
+    const p = canvasPoint(e);
+    mosaicDraft = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    resultCanvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+  const i = cellIndexAt(canvasPoint(e));
+  if (i < 0) return;
+  const f = state.slots[i] != null ? state.frames[state.slots[i]] : null;
+  if (!f || f === 'loading') return;
+  const off = state.offsets[i] || (state.offsets[i] = { fx: 0.5, fy: 0.5, z: 1 });
+  drag = { i, x0: e.clientX, y0: e.clientY, fx0: off.fx, fy0: off.fy };
+  resultCanvas.setPointerCapture(e.pointerId);
+  resultCanvas.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+
+const draftRect = () => ({
+  x: Math.min(mosaicDraft.x0, mosaicDraft.x1),
+  y: Math.min(mosaicDraft.y0, mosaicDraft.y1),
+  w: Math.abs(mosaicDraft.x1 - mosaicDraft.x0),
+  h: Math.abs(mosaicDraft.y1 - mosaicDraft.y0),
+});
+
+resultCanvas.addEventListener('pointermove', (e) => {
+  if (mosaicDraft) {
+    const p = canvasPoint(e);
+    mosaicDraft.x1 = p.x;
+    mosaicDraft.y1 = p.y;
+    stitch(true);
+    // 画框选虚线
+    const ctx = resultCanvas.getContext('2d');
+    const r = draftRect();
+    ctx.save();
+    ctx.strokeStyle = '#5b8cff';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 6]);
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.restore();
+    return;
+  }
+  if (!drag) return;
+  const cell = lastCells[drag.i];
+  const img = state.frames[state.slots[drag.i]].img;
+  const off = state.offsets[drag.i];
+  const w = coverWindow(img, cell.w, cell.h, off, state.crops[drag.i]);
+  // 屏幕位移 → 画布位移 → 源图位移 → 取景窗位置增量（拖动方向与取景窗移动方向相反）
+  const rect = resultCanvas.getBoundingClientRect();
+  const cssToCanvas = resultCanvas.width / rect.width;
+  const canvasToSrc = w.sw / cell.w;
+  const dxSrc = (e.clientX - drag.x0) * cssToCanvas * canvasToSrc;
+  const dySrc = (e.clientY - drag.y0) * cssToCanvas * canvasToSrc;
+  if (w.slackX > 1) off.fx = clamp01(drag.fx0 - dxSrc / w.slackX);
+  if (w.slackY > 1) off.fy = clamp01(drag.fy0 - dySrc / w.slackY);
+  stitch(true);
+});
+
+const endDrag = () => {
+  if (mosaicDraft) {
+    const r = draftRect();
+    if (r.w > 12 && r.h > 12) state.mosaics.push({ ...r, style: state.mosaicStyle }); // 过小的框视为误触
+    mosaicDraft = null;
+    stitch();
+    return;
+  }
+  if (!drag) return;
+  drag = null;
+  resultCanvas.style.cursor = 'grab';
+  stitch(); // 松手后完整更新手机预览和下载体积
+};
+resultCanvas.addEventListener('pointerup', endDrag);
+resultCanvas.addEventListener('pointercancel', endDrag);
+
+// ---------- 自由裁剪弹窗 ----------
+let cropEdit = null; // {pos, img, rect(0~1 比例), start}
+const cropCv = $('crop-canvas');
+
+function openCrop(pos) {
+  const fi = state.slots[pos];
+  const f = fi != null ? state.frames[fi] : null;
+  if (!f || f === 'loading') return;
+  cropEdit = { pos, img: f.img, rect: { ...state.crops[pos] }, start: null };
+  cropCv.width = f.img.naturalWidth;
+  cropCv.height = f.img.naturalHeight;
+  $('crop-modal').style.display = 'flex';
+  drawCropEditor();
+}
+window.openCrop = openCrop;
+
+function drawCropEditor() {
+  const cx = cropCv.getContext('2d');
+  cx.drawImage(cropEdit.img, 0, 0);
+  const r = cropEdit.rect;
+  const X = r.x * cropCv.width, Y = r.y * cropCv.height;
+  const Wc = r.w * cropCv.width, Hc = r.h * cropCv.height;
+  cx.save();
+  cx.fillStyle = 'rgba(0,0,0,.55)'; // 压暗保留区以外的部分
+  cx.fillRect(0, 0, cropCv.width, Y);
+  cx.fillRect(0, Y + Hc, cropCv.width, cropCv.height - Y - Hc);
+  cx.fillRect(0, Y, X, Hc);
+  cx.fillRect(X + Wc, Y, cropCv.width - X - Wc, Hc);
+  cx.strokeStyle = '#5b8cff';
+  cx.lineWidth = Math.max(2, cropCv.width / 320);
+  cx.setLineDash([14, 8]);
+  cx.strokeRect(X, Y, Wc, Hc);
+  cx.restore();
+}
+
+function cropPoint(e) {
+  const rect = cropCv.getBoundingClientRect();
+  return {
+    x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
+    y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+  };
+}
+
+cropCv.addEventListener('pointerdown', (e) => {
+  if (!cropEdit) return;
+  cropEdit.start = cropPoint(e);
+  cropCv.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+cropCv.addEventListener('pointermove', (e) => {
+  if (!cropEdit || !cropEdit.start) return;
+  const p = cropPoint(e), s = cropEdit.start;
+  cropEdit.rect = {
+    x: Math.min(s.x, p.x),
+    y: Math.min(s.y, p.y),
+    w: Math.abs(p.x - s.x),
+    h: Math.abs(p.y - s.y),
+  };
+  drawCropEditor();
+});
+const endCropDrag = () => {
+  if (!cropEdit || !cropEdit.start) return;
+  cropEdit.start = null;
+  // 框太小视为误触，恢复全图
+  if (cropEdit.rect.w < 0.05 || cropEdit.rect.h < 0.05) {
+    cropEdit.rect = { x: 0, y: 0, w: 1, h: 1 };
+    drawCropEditor();
+  }
+};
+cropCv.addEventListener('pointerup', endCropDrag);
+cropCv.addEventListener('pointercancel', endCropDrag);
+
+$('crop-reset').onclick = () => {
+  if (!cropEdit) return;
+  cropEdit.rect = { x: 0, y: 0, w: 1, h: 1 };
+  drawCropEditor();
+};
+$('crop-cancel').onclick = () => {
+  cropEdit = null;
+  $('crop-modal').style.display = 'none';
+};
+$('crop-ok').onclick = () => {
+  if (!cropEdit) return;
+  state.crops[cropEdit.pos] = { ...cropEdit.rect };
+  state.offsets[cropEdit.pos] = { fx: 0.5, fy: 0.5, z: 1 }; // 裁剪变了，取景回到居中
+  cropEdit = null;
+  $('crop-modal').style.display = 'none';
+  renderFrameCards();
+  stitch();
+};
+
+// 模式切换：取景 / 马赛克
+$('mode').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.mode = btn.dataset.m;
+  [...$('mode').children].forEach((b) => b.classList.toggle('active', b === btn));
+  resultCanvas.style.cursor = state.mode === 'mosaic' ? 'crosshair' : 'grab';
+};
+
+$('sharpen-toggle').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.sharpen = btn.dataset.sp === '1';
+  [...$('sharpen-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+
+$('detext-toggle').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.detext = btn.dataset.dt === '1';
+  [...$('detext-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+
+$('mosaic-style').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.mosaicStyle = btn.dataset.s;
+  [...$('mosaic-style').children].forEach((b) => b.classList.toggle('active', b === btn));
+};
+
+$('mosaic-undo').onclick = () => {
+  if (!state.mosaics.length) return;
+  state.mosaics.pop();
+  stitch();
+};
+
+// 滚轮缩放：悬停在哪一格就缩放哪一格（放大 = 裁得更紧）
+let wheelTimer = null;
+resultCanvas.addEventListener('wheel', (e) => {
+  if (state.mode === 'mosaic') return;
+  const i = cellIndexAt(canvasPoint(e));
+  if (i < 0) return;
+  const f = state.slots[i] != null ? state.frames[state.slots[i]] : null;
+  if (!f || f === 'loading') return;
+  e.preventDefault();
+  const off = state.offsets[i] || (state.offsets[i] = { fx: 0.5, fy: 0.5, z: 1 });
+  off.z = Math.min(4, Math.max(1, (off.z || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+  stitch(true);
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => stitch(), 250); // 停止滚动后完整更新
+}, { passive: false });
 
 $('layout').onclick = (e) => {
   const btn = e.target.closest('button');
@@ -697,8 +1156,13 @@ async function updateDownloads() {
   const seq = ++exportSeq;
   const small = document.createElement('canvas');
   small.width = 640; small.height = 360;
-  small.getContext('2d').drawImage($('result'), 0, 0, 640, 360);
+  const sctx = small.getContext('2d');
+  sctx.drawImage($('result'), 0, 0, 640, 360);
+  if (state.sharpen) sharpenCanvas(sctx, small, 1, 0.8); // 在 640 输出分辨率上做主力锐化
   const sm = await toBlobAsync(small, 'image/jpeg', 0.8);
+  // 手机双列预览直接用 640 成品图（所见即所得）
+  const smallUrl = small.toDataURL('image/jpeg', 0.9);
+  document.querySelectorAll('.pv').forEach((img) => (img.src = smallUrl));
   if (seq !== exportSeq) return; // 期间又重新拼接了，丢弃本次结果
   smallBlob = sm;
   $('download-sm').textContent = `⬇ 下载封面图 · ${kb(sm.size)}`;

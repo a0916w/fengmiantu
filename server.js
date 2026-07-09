@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
+const { isAllowedUrl, probeDuration, captureFrame, captureFrameWithText, pickTime } = require('./lib/media');
 const { uploadCover } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
 const { createStore } = require('./lib/store');
@@ -112,9 +112,10 @@ const server = http.createServer(async (req, res) => {
       if (!isAllowedUrl(url)) return sendJson(res, 400, { error: '请输入合法的 http(s) 链接' });
       const t = pickTime(duration || null, Number(index) || 0, Math.max(1, Number(count) || 3));
       try {
-        const buf = await captureFrame(url, t);
+        const { buf, textBoxes } = await captureFrameWithText(url, t);
         return sendJson(res, 200, {
           time: Math.round(t * 10) / 10,
+          textBoxes,
           image: `data:image/jpeg;base64,${buf.toString('base64')}`,
         });
       } catch (e) {
