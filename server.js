@@ -13,8 +13,46 @@ const crypto = require('crypto');
 const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
 const { uploadCover } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
+const { createStore } = require('./lib/store');
+const { createLogos } = require('./lib/logos');
+const { createQueue } = require('./lib/queue');
+const { composeCover } = require('./lib/compose');
+const { processCoverJob } = require('./lib/coverjob');
 
 const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const LOGOS_DIR = process.env.LOGOS_DIR || path.join(__dirname, 'logos');
+const CONCURRENCY = parseInt(process.env.FENGMIANTU_CONCURRENCY || '2', 10);
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
+const store = createStore(DATA_DIR);
+const logos = createLogos(LOGOS_DIR);
+const queue = createQueue({
+  store,
+  concurrency: CONCURRENCY,
+  process: (job) => processCoverJob(job, { probeDuration, pickTime, captureFrame, composeCover, uploadCover, logos }),
+  onDone: async (job, result) => {
+    if (!job.callback) return;
+    const body = result.error
+      ? { status: 'failed', job_id: job.id, external_id: job.externalId, error: result.error }
+      : { status: 'completed', job_id: job.id, external_id: job.externalId, url: result.url };
+    try { await httpPostJson(job.callback, body); }
+    catch (e) { console.error('[cover] callback failed', job.id, e && e.message); }
+  },
+});
+
+function bearer(req) {
+  const h = req.headers['authorization'] || '';
+  const m = /^Bearer\s+(.+)$/.exec(h);
+  if (m) return m[1];
+  try { return new URL(req.url, 'http://x').searchParams.get('token') || ''; } catch { return ''; }
+}
+function requireAdmin(req) {
+  if (!ADMIN_TOKEN) return false;
+  const a = Buffer.from(ADMIN_TOKEN), b = Buffer.from(bearer(req));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function projectFromReq(req) { return store.getProjectByToken(bearer(req)); }
 
 // ---------- HTTP ----------
 
@@ -103,6 +141,29 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ---------- 多项目封面 API（异步 + 回调）----------
+    if (req.method === 'POST' && pathname === '/api/cover') {
+      const project = projectFromReq(req);
+      if (!project) return sendJson(res, 401, { error: '无效 token' });
+      const { url, logo, external_id: externalId, callback } = await readJsonBody(req);
+      if (!isAllowedUrl(url)) return sendJson(res, 400, { error: '请输入合法的 http(s) 视频链接' });
+      const useLogo = (logo === undefined || logo === null || logo === '') ? project.defaultLogo : String(logo);
+      if (useLogo !== 'none' && !logos.exists(useLogo)) return sendJson(res, 400, { error: 'logo 不存在: ' + useLogo });
+      if (!callback || !callbackAllowed(callback)) return sendJson(res, 400, { error: '回调地址缺失或不被允许' });
+      const job = store.createJob({ projectKey: project.key, url, logo: useLogo, externalId, callback });
+      queue.enqueue(job);
+      return sendJson(res, 200, { ok: true, job_id: job.id });
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/api/cover/')) {
+      const project = projectFromReq(req);
+      if (!project) return sendJson(res, 401, { error: '无效 token' });
+      const id = pathname.slice('/api/cover/'.length);
+      const job = store.getJob(id);
+      if (!job || job.projectKey !== project.key) return sendJson(res, 404, { error: '任务不存在' });
+      return sendJson(res, 200, { status: job.status, resultUrl: job.resultUrl, error: job.error });
+    }
+
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Not Found');
   } catch (e) {
@@ -110,6 +171,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`智能封面图服务已启动: http://localhost:${PORT}`);
-});
+// 仅在直接运行时监听；被 require（测试）时由调用方控制生命周期，避免进程挂住。
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`智能封面图服务已启动: http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { app: server, store, logos, queue };
