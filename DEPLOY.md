@@ -1,7 +1,10 @@
 # fengmiantu 部署（手动选封面工具）
 
-单文件 Node 服务（`server.js` + `index.html` + `logo.png`），**零 npm 依赖**，只需本机装
-Node + ffmpeg。webmm 后台「手动选封面」跳到这里，用户挑帧拼图 → 上传 FTP → 回写 webmm。
+Node 服务（`server.js` + `lib/` + `index.html` + `logo.png`），一个 npm 依赖 `@napi-rs/canvas`
+（服务端拼图），本机装 Node + ffmpeg。两种用法：
+- **手动工具**：webmm 后台「手动选封面」跳到这里，浏览器挑帧拼图 → 上传 FTP → 回写 webmm。
+- **多项目 API**：其它项目 `POST /api/cover` 传视频链接 + logo，服务端自动抽 3 帧拼图 → 上传 FTP →
+  回调结果 URL。后台 `/queue` `/projects` `/logos` 管理任务、项目、logo。
 
 ## 1. 前置
 
@@ -14,12 +17,15 @@ ffmpeg -version && ffprobe -version   # 没有就装：apt install -y ffmpeg  / 
 
 ## 2. 放代码
 
-把 `server.js` `index.html` `logo.png` 三个文件拷到服务器（如 `/opt/fengmiantu/`）。
-scp 示例：
+把整个仓库拷到服务器（如 `/opt/fengmiantu/`），装依赖：
 
 ```bash
-scp server.js index.html logo.png user@服务器:/opt/fengmiantu/
+git clone <repo> /opt/fengmiantu && cd /opt/fengmiantu
+npm i                     # 装 @napi-rs/canvas（预编译，无需编译工具）
 ```
+
+`data/`（任务/项目 JSON）和 `logos/`（各项目 logo）是运行时可写目录，**部署时勿覆盖**（已在
+`.gitignore`）。发版更新：`git pull && npm i && 重启服务`。
 
 ## 3. 配环境变量
 
@@ -41,6 +47,13 @@ export COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
 
 # —— 端口（可选，默认 3000）——
 export PORT=3000
+
+# —— 多项目 API + 后台（新）——
+export ADMIN_TOKEN=<强随机串>          # 访问 /queue /projects /logos 及管理 API 的口令
+export FENGMIANTU_CONCURRENCY=2        # 队列并发（同时处理几个封面任务）
+export FFMPEG_MAX_CONCURRENCY=4        # 全局 ffmpeg 抽帧并发闸（手动+队列合计上限）
+# export DATA_DIR=/opt/fengmiantu/data   # 可选，默认项目目录下 data/
+# export LOGOS_DIR=/opt/fengmiantu/logos # 可选，默认项目目录下 logos/
 ```
 
 > 上传后 `FTP_DIR` 里的文件，用 `FTP_URL_PREFIX + / + 文件名` 拼成公开 URL 回给 webmm。
@@ -67,10 +80,16 @@ Environment=FTP_PASS=xxxxx
 Environment=FTP_DIR=/covers
 Environment=FTP_URL_PREFIX=https://cdn.你的图床.com/covers
 Environment=COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
+Environment=ADMIN_TOKEN=强随机串
+Environment=FENGMIANTU_CONCURRENCY=2
+Environment=FFMPEG_MAX_CONCURRENCY=4
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+> systemd 里 `ExecStart` 前确保已 `npm i`（node_modules 就位）。发版：`git pull && npm i &&
+> systemctl restart fengmiantu`。
 
 ```bash
 systemctl daemon-reload && systemctl enable --now fengmiantu

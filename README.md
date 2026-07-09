@@ -4,15 +4,19 @@
 
 ## 依赖
 
-- Node.js（无 npm 依赖）
+- Node.js
 - ffmpeg / ffprobe（`brew install ffmpeg`）
+- `@napi-rs/canvas`（服务端拼图，预编译二进制）——`npm i`
 
 ## 启动
 
 ```bash
+npm i
 node server.js          # 默认 http://localhost:3000
 PORT=3737 node server.js  # 指定端口
 ```
+
+测试：`npm test`（`node --test`）。
 
 ## 功能
 
@@ -26,7 +30,35 @@ PORT=3737 node server.js  # 指定端口
 
 ## 接口
 
+### 手动工具（浏览器 canvas 拼图）
+
 | 接口 | 说明 |
 | --- | --- |
 | `POST /api/probe` `{url}` | 探测视频时长 |
 | `POST /api/frame` `{url, duration, index, count}` | 截取第 index 段的一帧，返回 base64 图片和时间点 |
+| `POST /api/publish` `{image, external_id, callback}` | 上传浏览器合成的成品并回调 |
+
+### 多项目封面 API（异步 + 回调，服务端拼图）
+
+供其它项目调用：传视频链接 + 指定 logo，服务端自动抽默认 3 帧、拼图、叠该项目 logo，上传后把结果 URL 回调回去。
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /api/cover` `Bearer <项目token>` `{url, logo?, external_id?, callback}` | 建任务入队，立即返回 `{ ok, job_id }`；缺 `logo` 用项目默认，`logo:"none"` 不叠 |
+| `GET /api/cover/:id` `Bearer <项目token>` | 查任务状态 `{ status, resultUrl, error }` |
+
+回调（服务端 → 调用方 `callback`）：
+- 成功 `{ status:"completed", job_id, external_id, url }`
+- 失败 `{ status:"failed", job_id, external_id, error }`
+
+抽帧/拼图受全局 ffmpeg 并发闸限制（`FFMPEG_MAX_CONCURRENCY`），队列并发 `FENGMIANTU_CONCURRENCY`。
+
+## 后台（需 `ADMIN_TOKEN`，`?token=` 或 `Authorization: Bearer`）
+
+| 页面 | 说明 |
+| --- | --- |
+| `/queue` | 队列/任务列表：项目、状态、结果缩略图、失败原因 |
+| `/projects` | 项目管理：新建（生成 token）、设默认 logo、重置 token、删除 |
+| `/logos` | logo 管理：网页上传/替换/删除 PNG + 预览 |
+
+多项目用法：先在 `/logos` 传各项目 logo，再在 `/projects` 建项目并选默认 logo，拿到 token 给该项目调用 `/api/cover`。
