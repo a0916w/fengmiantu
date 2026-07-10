@@ -5,6 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>智能封面图</title>
 <style>
+  /* 自托管封面字体（免费可商用） */
+  @font-face {
+    font-family: '沐瑶软笔手写体';
+    src: url('/fonts/muyao-ruanbi.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '沐瑶随心手写体';
+    src: url('/fonts/muyao-suixin.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '摄图摩登小方体';
+    src: url('/fonts/modern-xiaofang.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '包图小白体';
+    src: url('/fonts/xiaobai.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '千图小兔体';
+    src: url('/fonts/xiaotu.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '站酷快乐体';
+    src: url('/fonts/kuaile.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '新叶念体';
+    src: url('/fonts/xinyenian.otf') format('opentype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: '字体视界法棍体';
+    src: url('/fonts/fagun.ttf') format('truetype');
+    font-display: swap;
+  }
+
   :root {
     --bg: #0b0d12;
     --panel: #141821;
@@ -148,6 +190,32 @@
     color: var(--text); font-size: 12px; cursor: pointer;
   }
 
+  /* 字体选择：自定义下拉，每项用自身字体渲染预览 */
+  .fontpick { position: relative; }
+  .fontmenu {
+    display: none; position: absolute; top: 34px; left: 0; z-index: 30;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    min-width: 230px; max-height: 320px; overflow-y: auto;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 4px;
+  }
+  .fontmenu.open { display: block; }
+  .fitem {
+    padding: 7px 12px; border-radius: 7px; cursor: pointer;
+    font-size: 17px; color: var(--text); white-space: nowrap;
+  }
+  .fitem:hover { background: #232a3a; }
+  .fitem.active { background: var(--accent); }
+
+  /* 颜色预设色块 */
+  .swatch-label { font-size: 12px; color: var(--muted); }
+  .swatch {
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+    border: 2px solid var(--border); padding: 0; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 10px; color: var(--muted);
+    vertical-align: middle; margin: 0 2px;
+  }
+  .swatch.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
   .order-strip {
     display: flex; gap: 8px; justify-content: center;
     margin-bottom: 8px; flex-wrap: wrap;
@@ -171,10 +239,18 @@
   .oitem .cap button { padding: 1px 7px; font-size: 11px; }
 
   #result-box { text-align: center; }
+  #result-wrap {
+    position: relative; display: inline-block; width: 100%; max-width: 420px;
+    font-size: 0; /* 消除 inline 间隙 */
+  }
   #result {
-    display: none; max-width: 420px; width: 100%; margin: 0 auto;
+    display: none; width: 100%;
     border-radius: 10px; border: 1px solid var(--border);
     cursor: grab; touch-action: none;
+  }
+  #overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none;
   }
   #result-empty { color: #4a5268; font-size: 13px; padding: 40px 0; }
   .pv-cap { display: none; color: var(--muted); font-size: 11px; margin: 10px 0 6px; }
@@ -191,6 +267,7 @@
   }
   .tile .tl { height: 9px; background: #232a3a; border-radius: 4px; margin-top: 8px; }
   .tile .tl.short { width: 55%; margin-top: 6px; }
+  .phone.portrait .tile img { aspect-ratio: 3/4; } /* 直版封面的手机双列 */
   .dl-row { margin-top: 12px; display: none; }
   .dl-row button { padding: 9px 24px; }
   .dl-note { color: var(--muted); font-size: 11px; margin-top: 6px; }
@@ -235,7 +312,7 @@
 
     <div class="card">
       <div class="section-title" style="margin-top:0">
-        <h2>拼接结果 <span style="color:var(--muted);font-size:12px;font-weight:400">640×360 JPG</span></h2>
+        <h2>拼接结果 <span id="out-size" style="color:var(--muted);font-size:12px;font-weight:400">640×360 JPG</span></h2>
         <div class="dl-row" id="dl-row" style="margin:0">
           <button class="btn-primary" id="download-sm" style="padding:7px 16px;font-size:13px">⬇ 下载封面图</button>
           <button class="btn-primary" id="use-cover" disabled style="padding:7px 16px;font-size:13px;display:none;background:var(--accent2,#22c55e)">✓ 用作封面</button>
@@ -245,6 +322,10 @@
         <div class="seg" id="layout">
           <button data-l="diag" class="active">斜切</button>
           <button data-l="single">单图</button>
+        </div>
+        <div class="seg" id="orient" title="横版 640×360 / 直版 540×720">
+          <button data-o="h" class="active">横版</button>
+          <button data-o="v">直版</button>
         </div>
         <label class="numctl" title="选择印在封面左上角的 logo">Logo
           <select id="logo-select">
@@ -275,24 +356,38 @@
         </div>
         <button class="btn-ghost sm" id="mosaic-undo">撤销马赛克</button>
       </div>
-      <div class="ctl-row" style="margin-bottom:10px">
-        <input type="text" id="title-input" placeholder="标题(可选)" maxlength="40"
+      <div class="ctl-row">
+        <input type="text" id="title-input" placeholder="文字字段(可选)，输入后在预览图上拖动摆位" maxlength="40"
           style="height:30px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:inherit;padding:0 10px;font-size:12px;flex:1;min-width:140px">
-        <div class="seg" id="title-pos" title="标题位置">
-          <button data-tp="top">上</button>
-          <button data-tp="mid">中</button>
-          <button data-tp="bottom" class="active">下</button>
+        <div class="fontpick" id="font-pick">
+          <button class="btn-ghost sm" id="font-btn">黑体 ▾</button>
+          <div class="fontmenu" id="font-menu"></div>
         </div>
-        <div class="seg" id="title-style" title="标题样式：黑条=半透明条，描边=白字黑描边">
-          <button data-ts="bar" class="active">黑条</button>
-          <button data-ts="outline">描边</button>
-        </div>
+        <label class="numctl" title="字号，占画面高度的百分比">字号
+          <select id="text-size">
+            <option value="8">小 8%</option>
+            <option value="11">中 11%</option>
+            <option value="13" selected>大 13%</option>
+            <option value="17">特大 17%</option>
+            <option value="22">巨大 22%</option>
+          </select>
+        </label>
+        <button class="btn-ghost sm" id="text-del" title="删除当前选中的字段">删字段</button>
+      </div>
+      <div class="ctl-row" style="margin-bottom:10px">
+        <span class="swatch-label">字色</span>
+        <span id="fill-swatches"></span>
+        <span class="swatch-label" style="margin-left:8px">描边</span>
+        <span id="stroke-swatches"></span>
       </div>
       <div class="order-strip" id="order-strip"></div>
       <div id="result-box">
         <div id="result-empty">选满 3 张候选帧后自动拼接预览</div>
-        <div class="pv-cap" id="cap-full" style="margin-top:0">整张预览 · 取景模式：拖动调整、滚轮缩放 · 马赛克模式：框选打码</div>
-        <canvas id="result"></canvas>
+        <div class="pv-cap" id="cap-full" style="margin-top:0">整张预览 · 取景：拖动/滚轮缩放 · 文字：点选后拖动/拉角缩放/转柄旋转/✕删除 · 马赛克：框选打码</div>
+        <div id="result-wrap">
+          <canvas id="result"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
         <div class="pv-cap" id="cap-phone">手机双列效果</div>
         <div class="phone" id="phone">
           <div class="tile"><img class="pv"><div class="tl"></div><div class="tl short"></div></div>
@@ -317,9 +412,9 @@ const state = {
   offsets: [],                         // 每格取景偏移 {fx, fy, z}，拖动/滚轮调整
   crops: [],                           // 每格自由裁剪 {x,y,w,h}（0~1 比例，默认全图）
   sharpenAmt: 0.8,                     // 整图锐化强度（0 关闭 ~ 2 最强）
-  title: '',                           // 封面标题文字（空=不显示）
-  titlePos: 'bottom',                  // 标题位置：top / mid / bottom
-  titleStyle: 'bar',                   // 标题样式：bar 半透明黑条 / outline 描边
+  orient: 'h',                         // 封面方向：h 横版 640×360 / v 直版 540×720
+  texts: [],                           // 文字字段 [{text, sizePct, style, fx, fy}]，位置在预览上拖
+  activeText: -1,                      // 当前选中的字段下标
   mode: 'pan',                         // 预览交互模式：pan 取景 / mosaic 马赛克
   mosaicStyle: 'blur',                 // 马赛克样式：blur 打蒙 / pixel 颗粒
   mosaics: [],                         // 马赛克区域 [{x,y,w,h}]，画布坐标
@@ -363,6 +458,7 @@ fetch('/api/logo-list')
     const def = list.includes(want) ? want : list.includes('mm') ? 'mm' : list[0] || '';
     sel.value = def;
     state.logoName = def;
+    if (/^yini/i.test(def)) setOrient('v'); // yini 系 logo 默认直版
     if (baseValid) composeFinal();
   })
   .catch(() => {});
@@ -609,8 +705,13 @@ $('reroll-all').onclick = async () => {
   }
 };
 
-// ---------- Canvas 拼接（固定输出 1280×720 高清） ----------
-const OUT_W = 1280, OUT_H = 720;
+// ---------- Canvas 拼接 ----------
+// 横版：1280×720 合成 → 导出 640×360；直版：1080×1440 合成 → 导出 540×720
+const DIMS = {
+  h: { W: 1280, H: 720, exW: 640, exH: 360 },
+  v: { W: 1080, H: 1440, exW: 540, exH: 720 },
+};
+const dims = () => DIMS[state.orient];
 
 // 底图缓存：画面 + 锐化 + 马赛克（不含 logo）。换 logo 时直接用缓存合成，毫秒级。
 const baseCanvas = document.createElement('canvas');
@@ -626,11 +727,11 @@ function stitch(light) {
     }
     return;
   }
-  baseCanvas.width = OUT_W;
-  baseCanvas.height = OUT_H;
+  const { W, H } = dims();
+  baseCanvas.width = W;
+  baseCanvas.height = H;
   const ctx = baseCanvas.getContext('2d');
   paintBg(ctx, baseCanvas);
-  const W = OUT_W, H = OUT_H;
 
   const cells = layoutCells(W, H);
   lastCells = cells;
@@ -651,6 +752,8 @@ function stitch(light) {
     }
   });
 
+  if (state.layout === 'diag') drawSeams(ctx, W, H); // 斜切接缝白条
+
   if (state.sharpenAmt > 0 && !light) sharpenCanvas(ctx, baseCanvas, 3, state.sharpenAmt * 1.1); // 锐化在打码和 logo 之前
 
   applyMosaics(ctx, baseCanvas);
@@ -663,24 +766,27 @@ function composeFinal(light) {
   if (!baseValid) return;
   const canvas = $('result');
   const ctx = canvas.getContext('2d');
-  canvas.width = OUT_W;
-  canvas.height = OUT_H;
+  canvas.width = baseCanvas.width;
+  canvas.height = baseCanvas.height;
   ctx.drawImage(baseCanvas, 0, 0);
 
   // 左上角盖 Logo：不加底板，用多层黑色投影把 logo 从画面里衬出来
   const le = state.logoName && logoCache[state.logoName];
   if (le && le.ready) {
-    const lw = 400;
+    // 直版画布窄，logo 占宽比例放大一档才够醒目
+    const lw = Math.round(canvas.width * (state.orient === 'v' ? 0.42 : 0.31));
     const lh = Math.round(lw * le.img.naturalHeight / le.img.naturalWidth);
+    const m = Math.round(canvas.width * 0.019);
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
     ctx.shadowBlur = 18;
-    ctx.drawImage(le.img, 24, 24, lw, lh); // 画两遍加深阴影轮廓
-    ctx.drawImage(le.img, 24, 24, lw, lh);
+    ctx.drawImage(le.img, m, m, lw, lh); // 画两遍加深阴影轮廓
+    ctx.drawImage(le.img, m, m, lw, lh);
     ctx.restore();
   }
 
-  drawTitle(ctx, canvas); // 标题文字（空则跳过）
+  drawTexts(ctx, canvas); // 文字字段（空则跳过）
+  drawOverlay();          // 选中框画在独立覆盖层，不会进导出图
 
   if (light) return; // 拖动过程中只重绘画布，跳过下面的重活
 
@@ -699,43 +805,91 @@ function paintBg(ctx, canvas) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-/** 封面标题：canvas 叠字，导出时随整图缩到 640。超长自动缩字号保证一行放下。 */
-function drawTitle(ctx, canvas) {
-  const text = (state.title || '').trim();
-  if (!text) return;
+/**
+ * 文字字段：canvas 叠字，导出随整图缩小。每个字段有内容/字号/样式/位置（可拖）。
+ * 绘制时记录每个字段的包围盒（画布坐标），供预览上点选与拖动。
+ */
+/** 覆盖层：画选中文字的变换框（虚线框 + 缩放/旋转/删除手柄），独立于导出画布 */
+function drawOverlay() {
+  const ov = $('overlay');
+  ov.width = $('result').width;
+  ov.height = $('result').height;
+  const b = state.activeText >= 0 ? textBoxes.find((x) => x.i === state.activeText) : null;
+  if (!b || state.mode === 'mosaic') return;
+  const rect = $('result').getBoundingClientRect();
+  if (!rect.width) return;
+  const k = ov.width / rect.width; // 1 css px = k 画布 px，保证手柄屏显大小恒定
+  const g = ov.getContext('2d');
+  g.save();
+  g.translate(b.cx, b.cy);
+  g.rotate(b.rot);
+  g.strokeStyle = '#5b8cff';
+  g.lineWidth = 1.6 * k;
+  g.setLineDash([7 * k, 5 * k]);
+  g.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h);
+  g.setLineDash([]);
+  // 旋转手柄连线
+  g.beginPath();
+  g.moveTo(0, -b.h / 2);
+  g.lineTo(0, -b.h / 2 - 26 * k);
+  g.stroke();
+  const dot = (x, y, fill) => {
+    g.beginPath();
+    g.arc(x, y, 7 * k, 0, Math.PI * 2);
+    g.fillStyle = fill;
+    g.fill();
+    g.strokeStyle = '#fff';
+    g.lineWidth = 1.6 * k;
+    g.stroke();
+  };
+  dot(b.w / 2, b.h / 2, '#5b8cff');            // 右下：缩放
+  dot(0, -b.h / 2 - 26 * k, '#5b8cff');        // 顶部：旋转
+  dot(b.w / 2, -b.h / 2, '#e63946');           // 右上：删除
+  // 删除手柄上画 ×
+  g.strokeStyle = '#fff';
+  g.lineWidth = 2 * k;
+  const r2 = 3.2 * k, hx = b.w / 2, hy = -b.h / 2;
+  g.beginPath();
+  g.moveTo(hx - r2, hy - r2); g.lineTo(hx + r2, hy + r2);
+  g.moveTo(hx + r2, hy - r2); g.lineTo(hx - r2, hy + r2);
+  g.stroke();
+  g.restore();
+}
+
+let textBoxes = []; // [{i, cx, cy, w, h, rot}]
+const DEFAULT_FONT = '-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+function drawTexts(ctx, canvas) {
+  textBoxes = [];
   const W = canvas.width, H = canvas.height;
-  const maxW = W * 0.92;
-  const fontOf = (s) => `700 ${s}px -apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif`;
-  let size = Math.round(H * 0.13);
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = fontOf(size);
-  while (ctx.measureText(text).width > maxW && size > 14) { size -= 2; ctx.font = fontOf(size); }
-  const cx = W / 2;
-  const margin = H * 0.03;
-  let cy;
-  if (state.titlePos === 'top') cy = size * 0.72 + margin;
-  else if (state.titlePos === 'mid') cy = H / 2;
-  else cy = H - size * 0.72 - margin;
-  if (state.titleStyle === 'bar') {
-    const barH = size * 1.7;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, Math.round(cy - barH / 2), W, Math.round(barH));
-    ctx.fillStyle = '#fff';
-    ctx.fillText(text, cx, cy);
-  } else {
+  state.texts.forEach((t, i) => {
+    const text = (t.text || '').trim();
+    if (!text) return;
+    const fontOf = (s) => `700 ${s}px ${t.font || DEFAULT_FONT}`;
+    let size = Math.round((t.sizePct || 0.13) * H);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = fontOf(size);
+    while (ctx.measureText(text).width > W * 0.94 && size > 12) { size -= 2; ctx.font = fontOf(size); }
+    const tw = ctx.measureText(text).width;
+    const cx = t.fx * W, cy = t.fy * H;
+    ctx.translate(cx, cy);
+    ctx.rotate(t.rot || 0);
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = size * 0.28;
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(3, size * 0.14);
-    ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-    ctx.strokeText(text, cx, cy);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff';
-    ctx.fillText(text, cx, cy);
-  }
-  ctx.restore();
+    if (t.stroke) {
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(3, size * 0.14);
+      ctx.strokeStyle = t.stroke;
+      ctx.strokeText(text, 0, 0);
+    }
+    ctx.shadowBlur = t.stroke ? 0 : size * 0.28; // 无描边时靠投影衬托
+    ctx.fillStyle = t.color || '#ffffff';
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+    const pad = size * 0.4;
+    textBoxes.push({ i, cx, cy, w: tw + pad * 2, h: size + pad * 2, rot: t.rot || 0 });
+  });
 }
 
 /**
@@ -811,10 +965,51 @@ function blurPatch(ctx, canvas, x, y, w, h) {
   ctx.drawImage(mosaicTmp, 0, 0, bw, bh, x, y, w, h);
 }
 
+/**
+ * 斜切接缝效果：层叠投影——前一块面板沿斜缝在下一块上投下柔和阴影，
+ * 看起来像三张画面叠放，有立体纵深感，没有生硬的分隔线。
+ */
+function drawSeams(ctx, W, H) {
+  const cells = layoutCells(W, H);
+  const tracePoly = (poly) => {
+    ctx.beginPath();
+    poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+  };
+  for (let i = 1; i < cells.length; i++) {
+    if (!cells[i].poly || !cells[i - 1].poly) continue;
+    ctx.save();
+    tracePoly(cells[i].poly); // 只允许影子落在"下面"那块里
+    ctx.clip();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = Math.round(W * 0.025);
+    if (state.orient === 'v') ctx.shadowOffsetY = Math.round(W * 0.012);
+    else ctx.shadowOffsetX = Math.round(W * 0.012);
+    tracePoly(cells[i - 1].poly); // 填充体被 clip 掉，只留投影
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 /** 当前布局的单元格列表，下标与卡槽一一对应；斜切布局带裁剪多边形 */
 function layoutCells(W, H) {
   if (state.layout === 'single') return [{ x: 0, y: 0, w: W, h: H }];
-  // 斜切三联：平行斜线分割
+  if (state.orient === 'v') {
+    // 直版斜切三联：三条横向斜切带（竖条会把 16:9 的帧裁得太狠）
+    const s = 40, b1 = H / 3, b2 = (H / 3) * 2;
+    const polys = [
+      [[0, 0], [W, 0], [W, b1 - s], [0, b1 + s]],
+      [[0, b1 + s], [W, b1 - s], [W, b2 - s], [0, b2 + s]],
+      [[0, b2 + s], [W, b2 - s], [W, H], [0, H]],
+    ];
+    return polys.map((poly) => {
+      const ys = poly.map((p) => p[1]);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      return { x: 0, y: minY, w: W, h: maxY - minY, poly };
+    });
+  }
+  // 横版斜切三联：平行竖向斜线分割
   const s = 56, b1 = W / 3, b2 = (W / 3) * 2;
   const polys = [
     [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
@@ -900,6 +1095,45 @@ function canvasPoint(e) {
 
 let mosaicDraft = null; // 正在框选的马赛克区域
 
+let dragText = null;   // 移动文字 {i, x0, y0, fx0, fy0}
+let resizeText = null; // 缩放文字 {i, d0, size0}
+let rotateText = null; // 旋转文字 {i, a0, rot0}
+
+/** 选中字段的包围盒（画布坐标） */
+const activeBox = () =>
+  state.activeText >= 0 ? textBoxes.find((b) => b.i === state.activeText) : null;
+
+/** 把画布点变换到某个盒子的局部坐标（未旋转空间） */
+function toLocal(p, b) {
+  const dx = p.x - b.cx, dy = p.y - b.cy;
+  const c = Math.cos(-b.rot), s = Math.sin(-b.rot);
+  return { x: dx * c - dy * s, y: dx * s + dy * c };
+}
+
+/** 命中选中框的手柄：resize(右下) / rotate(顶部) / delete(右上) */
+function handleHitAt(p) {
+  const b = activeBox();
+  if (!b) return null;
+  const rect = resultCanvas.getBoundingClientRect();
+  const k = resultCanvas.width / rect.width; // 1 css px = k 画布 px
+  const r = 14 * k; // 手柄命中半径
+  const l = toLocal(p, b);
+  const near = (x, y) => Math.hypot(l.x - x, l.y - y) <= r;
+  if (near(b.w / 2, -b.h / 2)) return 'delete';
+  if (near(b.w / 2, b.h / 2)) return 'resize';
+  if (near(0, -b.h / 2 - 26 * k)) return 'rotate';
+  return null;
+}
+
+function textHitAt(p) {
+  for (let k = textBoxes.length - 1; k >= 0; k--) {
+    const b = textBoxes[k];
+    const l = toLocal(p, b);
+    if (Math.abs(l.x) <= b.w / 2 && Math.abs(l.y) <= b.h / 2) return b.i;
+  }
+  return -1;
+}
+
 resultCanvas.addEventListener('pointerdown', (e) => {
   if (state.mode === 'mosaic') {
     const p = canvasPoint(e);
@@ -908,7 +1142,49 @@ resultCanvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     return;
   }
-  const i = cellIndexAt(canvasPoint(e));
+  const p = canvasPoint(e);
+  // 1) 选中框的手柄
+  const handle = handleHitAt(p);
+  if (handle) {
+    const idx = state.activeText;
+    const t = state.texts[idx];
+    const b = activeBox();
+    if (handle === 'delete') {
+      state.texts.splice(idx, 1);
+      state.activeText = -1;
+      syncTextControls();
+      composeFinal();
+      return;
+    }
+    if (handle === 'resize') {
+      resizeText = { i: idx, d0: Math.max(8, Math.hypot(p.x - b.cx, p.y - b.cy)), size0: t.sizePct };
+    } else {
+      rotateText = { i: idx, a0: Math.atan2(p.y - b.cy, p.x - b.cx), rot0: t.rot || 0 };
+    }
+    resultCanvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+  // 2) 文字本体：点选 + 拖动摆位
+  const hit = textHitAt(p);
+  if (hit >= 0) {
+    state.activeText = hit;
+    syncTextControls();
+    const t = state.texts[hit];
+    dragText = { i: hit, x0: e.clientX, y0: e.clientY, fx0: t.fx, fy0: t.fy };
+    resultCanvas.setPointerCapture(e.pointerId);
+    resultCanvas.style.cursor = 'move';
+    composeFinal(true);
+    e.preventDefault();
+    return;
+  }
+  // 3) 点空处：取消文字选中，进入取景拖动
+  if (state.activeText >= 0) {
+    state.activeText = -1;
+    syncTextControls();
+    composeFinal(true);
+  }
+  const i = cellIndexAt(p);
   if (i < 0) return;
   const f = state.slots[i] != null ? state.frames[state.slots[i]] : null;
   if (!f || f === 'loading') return;
@@ -927,6 +1203,34 @@ const draftRect = () => ({
 });
 
 resultCanvas.addEventListener('pointermove', (e) => {
+  if (dragText) {
+    const t = state.texts[dragText.i];
+    const rect = resultCanvas.getBoundingClientRect();
+    t.fx = Math.min(1, Math.max(0, dragText.fx0 + (e.clientX - dragText.x0) / rect.width));
+    t.fy = Math.min(1, Math.max(0, dragText.fy0 + (e.clientY - dragText.y0) / rect.height));
+    composeFinal(true);
+    return;
+  }
+  if (resizeText) {
+    const t = state.texts[resizeText.i];
+    const p = canvasPoint(e);
+    const d = Math.hypot(p.x - t.fx * resultCanvas.width, p.y - t.fy * resultCanvas.height);
+    t.sizePct = Math.min(0.45, Math.max(0.04, resizeText.size0 * (d / resizeText.d0)));
+    composeFinal(true);
+    return;
+  }
+  if (rotateText) {
+    const t = state.texts[rotateText.i];
+    const p = canvasPoint(e);
+    const a = Math.atan2(p.y - t.fy * resultCanvas.height, p.x - t.fx * resultCanvas.width);
+    let rot = rotateText.rot0 + a - rotateText.a0;
+    // 靠近水平/±90° 时自动吸附
+    const snap = [0, Math.PI / 2, -Math.PI / 2, Math.PI, -Math.PI];
+    for (const s of snap) if (Math.abs(rot - s) < 0.06) { rot = s; break; }
+    t.rot = rot;
+    composeFinal(true);
+    return;
+  }
   if (mosaicDraft) {
     const p = canvasPoint(e);
     mosaicDraft.x1 = p.x;
@@ -960,6 +1264,12 @@ resultCanvas.addEventListener('pointermove', (e) => {
 });
 
 const endDrag = () => {
+  if (dragText || resizeText || rotateText) {
+    dragText = resizeText = rotateText = null;
+    resultCanvas.style.cursor = state.mode === 'mosaic' ? 'crosshair' : 'grab';
+    composeFinal();
+    return;
+  }
   if (mosaicDraft) {
     const r = draftRect();
     if (r.w > 12 && r.h > 12) state.mosaics.push({ ...r, style: state.mosaicStyle }); // 过小的框视为误触
@@ -1085,6 +1395,7 @@ $('mode').onclick = (e) => {
   state.mode = btn.dataset.m;
   [...$('mode').children].forEach((b) => b.classList.toggle('active', b === btn));
   resultCanvas.style.cursor = state.mode === 'mosaic' ? 'crosshair' : 'grab';
+  drawOverlay(); // 马赛克模式下隐藏文字选中框
 };
 
 $('sharpen-amt').oninput = () => {
@@ -1129,25 +1440,137 @@ $('layout').onclick = (e) => {
   renderFrameCards(); // 卡槽数量随布局变化
   stitch();
 };
-$('title-input').oninput = (e) => { state.title = e.target.value; composeFinal(); };
-$('title-pos').onclick = (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  state.titlePos = btn.dataset.tp;
-  [...$('title-pos').children].forEach((b) => b.classList.toggle('active', b === btn));
+// ---------- 文字字段控件 ----------
+const FONTS = [
+  { name: '黑体', css: DEFAULT_FONT },
+  { name: '沐瑶软笔', css: '"沐瑶软笔手写体","PingFang SC",sans-serif' },
+  { name: '沐瑶随心', css: '"沐瑶随心手写体","PingFang SC",sans-serif' },
+  { name: '摩登小方', css: '"摄图摩登小方体","PingFang SC",sans-serif' },
+  { name: '小白体', css: '"包图小白体","PingFang SC",sans-serif' },
+  { name: '小兔体', css: '"千图小兔体","PingFang SC",sans-serif' },
+  { name: '快乐体', css: '"站酷快乐体","PingFang SC",sans-serif' },
+  { name: '新叶念', css: '"新叶念体","PingFang SC",sans-serif' },
+  { name: '法棍体', css: '"字体视界法棍体","PingFang SC",sans-serif' },
+];
+const FILL_COLORS = ['#ffffff', '#ffe14d', '#ff4d6d', '#ff85c2', '#4dd2ff', '#111111'];
+const STROKE_COLORS = ['#000000', '#ffffff', '#e63946', '#1d4ed8', '']; // '' = 无描边
+const textDefaults = { sizePct: 0.13, font: DEFAULT_FONT, color: '#ffffff', stroke: '#000000', rot: 0 };
+
+function activeField() {
+  return state.activeText >= 0 ? state.texts[state.activeText] : null;
+}
+
+const fontName = (css) => (FONTS.find((f) => f.css === css) || FONTS[0]).name;
+
+/** 控件回显当前选中字段的参数 */
+function syncTextControls() {
+  const t = activeField();
+  $('title-input').value = t ? t.text : '';
+  $('text-size').value = String(Math.round(((t ? t.sizePct : textDefaults.sizePct) * 100)));
+  const font = t ? (t.font || DEFAULT_FONT) : textDefaults.font;
+  $('font-btn').textContent = fontName(font) + ' ▾';
+  $('font-btn').style.fontFamily = font;
+  [...$('font-menu').children].forEach((el) => el.classList.toggle('active', el.dataset.css === font));
+  const color = t ? t.color : textDefaults.color;
+  const stroke = t ? (t.stroke || '') : textDefaults.stroke;
+  [...$('fill-swatches').children].forEach((el) => el.classList.toggle('active', el.dataset.c === color));
+  [...$('stroke-swatches').children].forEach((el) => el.classList.toggle('active', el.dataset.c === stroke));
+}
+
+/** 修改选中字段（无则新建）并重画；webfont 未就绪时加载完自动补画 */
+function patchField(patch) {
+  let t = activeField();
+  if (!t) {
+    t = { text: '', ...textDefaults, fx: 0.5, fy: 0.88 };
+    state.texts.push(t);
+    state.activeText = state.texts.length - 1;
+  }
+  Object.assign(t, patch);
+  composeFinal();
+  document.fonts.load(`700 60px ${t.font}`, t.text || '测').then(() => composeFinal()).catch(() => {});
+}
+
+$('title-input').oninput = (e) => patchField({ text: e.target.value });
+$('text-size').onchange = () => {
+  const v = (Number($('text-size').value) || 13) / 100;
+  textDefaults.sizePct = v;
+  if (activeField()) patchField({ sizePct: v });
+};
+$('text-del').onclick = () => {
+  if (state.activeText < 0) return;
+  state.texts.splice(state.activeText, 1);
+  state.activeText = state.texts.length - 1;
+  syncTextControls();
   composeFinal();
 };
-$('title-style').onclick = (e) => {
+
+// 字体下拉：每项用自身字体渲染预览
+FONTS.forEach((f) => {
+  const el = document.createElement('div');
+  el.className = 'fitem';
+  el.dataset.css = f.css;
+  el.style.fontFamily = f.css;
+  el.textContent = `${f.name} · 可爱标题123`;
+  el.onclick = () => {
+    textDefaults.font = f.css;
+    $('font-menu').classList.remove('open');
+    if (activeField()) patchField({ font: f.css });
+    syncTextControls();
+  };
+  $('font-menu').appendChild(el);
+});
+$('font-btn').onclick = (e) => {
+  e.stopPropagation();
+  $('font-menu').classList.toggle('open');
+};
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.fontpick')) $('font-menu').classList.remove('open');
+});
+
+// 颜色预设色块
+function buildSwatches(box, colors, apply) {
+  colors.forEach((c) => {
+    const el = document.createElement('button');
+    el.className = 'swatch';
+    el.dataset.c = c;
+    if (c) el.style.background = c;
+    else el.textContent = '无';
+    el.title = c || '无描边';
+    el.onclick = () => { apply(c); syncTextControls(); };
+    box.appendChild(el);
+  });
+}
+buildSwatches($('fill-swatches'), FILL_COLORS, (c) => {
+  textDefaults.color = c;
+  if (activeField()) patchField({ color: c });
+});
+buildSwatches($('stroke-swatches'), STROKE_COLORS, (c) => {
+  textDefaults.stroke = c;
+  if (activeField()) patchField({ stroke: c });
+});
+syncTextControls();
+
+// ---------- 横版 / 直版 ----------
+function setOrient(o) {
+  if (state.orient === o) return;
+  state.orient = o;
+  [...$('orient').children].forEach((b) => b.classList.toggle('active', b.dataset.o === o));
+  $('result-wrap').style.maxWidth = o === 'v' ? '260px' : '420px';
+  $('phone').classList.toggle('portrait', o === 'v');
+  const d = dims();
+  $('out-size').textContent = `${d.exW}×${d.exH} JPG`;
+  stitch(); // 画布尺寸变了，底图需要重建
+}
+$('orient').onclick = (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  state.titleStyle = btn.dataset.ts;
-  [...$('title-style').children].forEach((b) => b.classList.toggle('active', b === btn));
-  composeFinal();
+  setOrient(btn.dataset.o);
 };
 
 $('logo-select').onchange = () => {
   state.logoName = $('logo-select').value;
   preloadLogo(state.logoName); // 一般已在缓存，未载完时 onload 会补一次合成
+  setOrient(/^yini/i.test(state.logoName) ? 'v' : 'h'); // yini 系 logo 默认直版
   composeFinal();              // 直接用底图缓存合成，毫秒级
 };
 $('crop-top').oninput = () => {
@@ -1167,11 +1590,12 @@ const kb = (n) => (n / 1024).toFixed(0) + 'KB';
 
 async function updateDownloads() {
   const seq = ++exportSeq;
+  const { exW, exH } = dims();
   const small = document.createElement('canvas');
-  small.width = 640; small.height = 360;
+  small.width = exW; small.height = exH;
   const sctx = small.getContext('2d');
-  sctx.drawImage($('result'), 0, 0, 640, 360);
-  if (state.sharpenAmt > 0) sharpenCanvas(sctx, small, 1, state.sharpenAmt); // 在 640 输出分辨率上做主力锐化
+  sctx.drawImage($('result'), 0, 0, exW, exH);
+  if (state.sharpenAmt > 0) sharpenCanvas(sctx, small, 1, state.sharpenAmt); // 在输出分辨率上做主力锐化
   const sm = await toBlobAsync(small, 'image/jpeg', 0.8);
   // 手机双列预览直接用 640 成品图（所见即所得）
   const smallUrl = small.toDataURL('image/jpeg', 0.9);
@@ -1187,7 +1611,7 @@ $('download-sm').onclick = () => {
   if (!smallBlob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(smallBlob);
-  a.download = `cover-640x360-${Date.now()}.jpg`;
+  a.download = `cover-${dims().exW}x${dims().exH}-${Date.now()}.jpg`;
   a.click();
   URL.revokeObjectURL(a.href);
 };

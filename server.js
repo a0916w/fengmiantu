@@ -41,6 +41,21 @@ const server = http.createServer(async (req, res) => {
       } catch {}
       return sendJson(res, 200, { logos: names });
     }
+    // 自托管字体（fonts/*.woff2|ttf），封面文字用
+    if (req.method === 'GET' && pathname.startsWith('/fonts/')) {
+      const name = decodeURIComponent(pathname.slice('/fonts/'.length));
+      if (!/^[A-Za-z0-9_.-]+\.(woff2|ttf|otf)$/.test(name)) { res.writeHead(404); return res.end(); }
+      try {
+        const buf = await fs.promises.readFile(path.join(__dirname, 'fonts', name));
+        const type = name.endsWith('.woff2') ? 'font/woff2' : name.endsWith('.otf') ? 'font/otf' : 'font/ttf';
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800' });
+        return res.end(buf);
+      } catch {
+        res.writeHead(404);
+        return res.end();
+      }
+    }
+
     if (req.method === 'GET' && pathname.startsWith('/logo-img/')) {
       const name = decodeURIComponent(pathname.slice('/logo-img/'.length));
       if (!/^[A-Za-z0-9_-]+$/.test(name)) { res.writeHead(404); return res.end(); }
