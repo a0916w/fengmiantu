@@ -718,7 +718,9 @@ function pixelate(ctx, canvas, x, y, w, h) {
 /** 打蒙：重高斯模糊 + 羽化边缘，观感比色块自然 */
 function blurPatch(ctx, canvas, x, y, w, h) {
   const blur = Math.max(18, Math.min(40, Math.min(w, h) / 5));
-  const pad = Math.round(blur * 2);
+  // 羽化半径按区域大小成比例（固定 14px 在 1280 大画布上看不出），下限保证小框也可见。
+  const feather = Math.max(10, Math.min(48, Math.min(w, h) * 0.18));
+  const pad = Math.round(blur * 2 + feather * 2);
   const x0 = Math.max(0, x - pad), y0 = Math.max(0, y - pad);
   const x1 = Math.min(canvas.width, x + w + pad), y1 = Math.min(canvas.height, y + h + pad);
   const pw = x1 - x0, ph = y1 - y0;
@@ -727,12 +729,11 @@ function blurPatch(ctx, canvas, x, y, w, h) {
   t.filter = `blur(${blur}px)`;
   t.drawImage(canvas, x0, y0, pw, ph, 0, 0, pw, ph);
   t.filter = 'none';
-  // 羽化：只保留框选中心，边缘渐隐过渡
-  const feather = 14;
+  // 羽化：遮罩盖满【整个框】(不内缩)，模糊向【外】扩 → 框内全覆盖、框外软过渡，边缘不再漏。
   t.globalCompositeOperation = 'destination-in';
   t.filter = `blur(${feather}px)`;
   t.fillStyle = '#fff';
-  t.fillRect(x - x0 + feather / 2, y - y0 + feather / 2, w - feather, h - feather);
+  t.fillRect(x - x0 - feather, y - y0 - feather, w + feather * 2, h + feather * 2);
   t.filter = 'none';
   t.globalCompositeOperation = 'source-over';
   ctx.drawImage(mosaicTmp, 0, 0, pw, ph, x0, y0, pw, ph);
