@@ -10,7 +10,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { isAllowedUrl, probeDuration, captureFrame, captureFrameWithText, pickTime } = require('./lib/media');
+const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
+
+const LOGOS_DIR = path.join(__dirname, 'logos');
 const { uploadCover } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
 
@@ -26,13 +28,24 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
       const html = await fs.promises.readFile(path.join(__dirname, 'index.html'));
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      // 禁止缓存页面，避免改版后浏览器还跑旧 JS
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(html);
     }
 
-    if (req.method === 'GET' && pathname === '/logo.png') {
+    // logo 库（logos/*.png）：列表 + 取图，供页面下拉选择
+    if (req.method === 'GET' && pathname === '/api/logo-list') {
+      let names = [];
       try {
-        const png = await fs.promises.readFile(path.join(__dirname, 'logo.png'));
+        names = fs.readdirSync(LOGOS_DIR).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)).sort();
+      } catch {}
+      return sendJson(res, 200, { logos: names });
+    }
+    if (req.method === 'GET' && pathname.startsWith('/logo-img/')) {
+      const name = decodeURIComponent(pathname.slice('/logo-img/'.length));
+      if (!/^[A-Za-z0-9_-]+$/.test(name)) { res.writeHead(404); return res.end(); }
+      try {
+        const png = await fs.promises.readFile(path.join(LOGOS_DIR, name + '.png'));
         res.writeHead(200, { 'Content-Type': 'image/png' });
         return res.end(png);
       } catch {
@@ -60,10 +73,9 @@ const server = http.createServer(async (req, res) => {
       if (!isAllowedUrl(url)) return sendJson(res, 400, { error: '请输入合法的 http(s) 链接' });
       const t = pickTime(duration || null, Number(index) || 0, Math.max(1, Number(count) || 3));
       try {
-        const { buf, textBoxes } = await captureFrameWithText(url, t);
+        const buf = await captureFrame(url, t);
         return sendJson(res, 200, {
           time: Math.round(t * 10) / 10,
-          textBoxes,
           image: `data:image/jpeg;base64,${buf.toString('base64')}`,
         });
       } catch (e) {

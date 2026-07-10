@@ -128,6 +128,26 @@
   }
   .seg button.active { background: var(--accent); color: #fff; }
 
+  /* 控制区：三行分组，所有控件统一 30px 高 */
+  .ctl-row { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+  .ctl-row .seg { height: 30px; }
+  .ctl-row .seg button { padding: 0 12px; height: 100%; }
+  .btn-ghost.sm { height: 30px; padding: 0 12px; font-size: 12px; }
+  .numctl {
+    display: inline-flex; align-items: center; gap: 4px; height: 30px;
+    font-size: 12px; color: var(--muted);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0 10px;
+  }
+  .numctl input {
+    width: 44px; background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 12px; text-align: right;
+  }
+  .numctl select {
+    background: var(--panel-2); border: none; outline: none;
+    color: var(--text); font-size: 12px; cursor: pointer;
+  }
+
   .order-strip {
     display: flex; gap: 8px; justify-content: center;
     margin-bottom: 8px; flex-wrap: wrap;
@@ -221,42 +241,30 @@
           <button class="btn-primary" id="use-cover" disabled style="padding:7px 16px;font-size:13px;display:none;background:var(--accent2,#22c55e)">✓ 用作封面</button>
         </div>
       </div>
-      <div id="layout" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
-        <div class="seg">
-          <button data-l="h" class="active">横排</button>
-          <button data-l="big">1大2小</button>
-          <button data-l="bigr">2小1大</button>
-          <button data-l="top1">上1下2</button>
-          <button data-l="center">中间大</button>
-          <button data-l="diag">斜切</button>
-        </div>
-        <div class="seg" style="align-self:flex-start">
+      <div class="ctl-row">
+        <div class="seg" id="layout">
+          <button data-l="diag" class="active">斜切</button>
           <button data-l="single">单图</button>
-          <button data-l="h2">两联</button>
-          <button data-l="diag2">斜切两联</button>
-          <button data-l="grid4">四宫格</button>
-          <button data-l="big3">1大3小</button>
         </div>
+        <label class="numctl" title="选择印在封面左上角的 logo">Logo
+          <select id="logo-select">
+            <option value="">无 Logo</option>
+          </select>
+        </label>
       </div>
-      <div class="controls">
-        <div class="seg" id="logo-toggle">
-          <button data-lg="1" class="active">Logo</button>
-          <button data-lg="0">无 Logo</button>
-        </div>
-        <div class="seg" id="sharpen-toggle" title="高清锐利化整张封面">
-          <button data-sp="1" class="active">锐化</button>
-          <button data-sp="0">原图</button>
-        </div>
-        <div class="seg" id="detext-toggle" title="自动打蒙画面中检测到的文字（水印/字幕/广告字）">
-          <button data-dt="1" class="active">去文字</button>
-          <button data-dt="0">保留文字</button>
-        </div>
-        <div class="seg" id="crop" title="按帧高比例裁掉每帧顶部，去除原视频水印">
-          <button data-c="0">不裁顶</button>
-          <button data-c="0.025">裁2.5%</button>
-          <button data-c="0.05">裁5%</button>
-          <button data-c="0.075" class="active">裁7.5%</button>
-        </div>
+      <div class="ctl-row">
+        <label class="numctl" title="高清锐利化强度：0 关闭，0.8 适中，2 最强">锐化
+          <input type="number" id="sharpen-amt" min="0" max="2" step="0.1" value="0.8">
+        </label>
+        <label class="numctl" title="裁掉每帧顶部的百分比，去顶部水印">裁顶
+          <input type="number" id="crop-top" min="0" max="20" step="0.5" value="7.5"><span>%</span>
+        </label>
+        <label class="numctl" title="裁掉每帧底部的百分比，去底部字幕/水印">裁底
+          <input type="number" id="crop-bottom" min="0" max="20" step="0.5" value="0"><span>%</span>
+        </label>
+        <button class="btn-ghost sm" id="crop-undo">撤销裁剪</button>
+      </div>
+      <div class="ctl-row" style="margin-bottom:10px">
         <div class="seg" id="mode" title="取景：拖动/滚轮调整画面；马赛克：在图上框选打码">
           <button data-m="pan" class="active">取景</button>
           <button data-m="mosaic">马赛克</button>
@@ -265,15 +273,17 @@
           <button data-s="blur" class="active">打蒙</button>
           <button data-s="pixel">颗粒</button>
         </div>
-        <button class="btn-ghost" id="mosaic-undo" style="padding:6px 10px;font-size:12px">撤销马赛克</button>
+        <button class="btn-ghost sm" id="mosaic-undo">撤销马赛克</button>
+      </div>
+      <div class="ctl-row" style="margin-bottom:10px">
         <input type="text" id="title-input" placeholder="标题(可选)" maxlength="40"
-          style="height:34px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:inherit;padding:0 10px;font:inherit;min-width:150px">
+          style="height:30px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:inherit;padding:0 10px;font-size:12px;flex:1;min-width:140px">
         <div class="seg" id="title-pos" title="标题位置">
           <button data-tp="top">上</button>
           <button data-tp="mid">中</button>
           <button data-tp="bottom" class="active">下</button>
         </div>
-        <div class="seg" id="title-style" title="标题样式：黑条=底部半透明条，描边=白字黑描边">
+        <div class="seg" id="title-style" title="标题样式：黑条=半透明条，描边=白字黑描边">
           <button data-ts="bar" class="active">黑条</button>
           <button data-ts="outline">描边</button>
         </div>
@@ -297,10 +307,7 @@
 const COUNT = 20;      // 候选帧数量
 const CONCURRENCY = 6; // 同时截帧的并发数
 // 每种布局需要的帧数
-const LAYOUT_NEED = {
-  h: 3, big: 3, bigr: 3, top1: 3, center: 3, diag: 3,
-  single: 1, h2: 2, diag2: 2, grid4: 4, big3: 4,
-};
+const LAYOUT_NEED = { diag: 3, single: 1 };
 const $ = (id) => document.getElementById(id);
 const state = {
   url: '',
@@ -309,26 +316,56 @@ const state = {
   slots: [null, null, null],           // 卡槽：每格存候选帧下标，数量随布局变化
   offsets: [],                         // 每格取景偏移 {fx, fy, z}，拖动/滚轮调整
   crops: [],                           // 每格自由裁剪 {x,y,w,h}（0~1 比例，默认全图）
-  sharpen: true,                       // 整图锐化（反锐化掩模）
-  detext: true,                        // 自动打蒙画面里检测到的文字
+  sharpenAmt: 0.8,                     // 整图锐化强度（0 关闭 ~ 2 最强）
+  title: '',                           // 封面标题文字（空=不显示）
+  titlePos: 'bottom',                  // 标题位置：top / mid / bottom
+  titleStyle: 'bar',                   // 标题样式：bar 半透明黑条 / outline 描边
   mode: 'pan',                         // 预览交互模式：pan 取景 / mosaic 马赛克
   mosaicStyle: 'blur',                 // 马赛克样式：blur 打蒙 / pixel 颗粒
   mosaics: [],                         // 马赛克区域 [{x,y,w,h}]，画布坐标
   activeSlot: null,                    // 当前高亮的目标卡槽
-  layout: 'h',
-  logo: true,
-  title: '',                           // 封面标题文字（空=不显示）
-  titlePos: 'bottom',                  // 标题位置：top / mid / bottom
-  titleStyle: 'bar',                   // 标题样式：bar 半透明黑条 / outline 描边
-  cropTop: 0.075, // 顶部裁剪，占帧高的比例
+  layout: 'diag',
+  logoName: '',      // 选中的 logo 名，空 = 不印
+
+  cropTop: 0.075,    // 顶部裁剪，占帧高的比例
+  cropBottom: 0,     // 底部裁剪，占帧高的比例
   running: false,
 };
 
-// 预载左上角 Logo 水印
-const logoImg = new Image();
-let logoReady = false;
-logoImg.onload = () => { logoReady = true; stitch(); };
-logoImg.src = '/logo.png';
+// 左上角 Logo 水印：全部预载进缓存，切换零等待
+const logoCache = {}; // name -> { img, ready }
+
+function preloadLogo(name) {
+  if (!name || logoCache[name]) return;
+  const e = (logoCache[name] = { img: new Image(), ready: false });
+  e.img.onload = () => {
+    e.ready = true;
+    if (state.logoName === name) composeFinal(); // 恰好选中它则立即合成
+  };
+  e.img.src = '/logo-img/' + encodeURIComponent(name);
+}
+
+// 拉取 logo 列表填充下拉框并全部预载。
+// 默认选择优先级：URL ?logo=<名字>（命中库里的名字）> mm > 列表第一个
+fetch('/api/logo-list')
+  .then((r) => r.json())
+  .then(({ logos }) => {
+    const sel = $('logo-select');
+    (logos || []).forEach((n) => {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+      preloadLogo(n);
+    });
+    const want = new URLSearchParams(location.search).get('logo');
+    const list = logos || [];
+    const def = list.includes(want) ? want : list.includes('mm') ? 'mm' : list[0] || '';
+    sel.value = def;
+    state.logoName = def;
+    if (baseValid) composeFinal();
+  })
+  .catch(() => {});
 
 function setStatus(text, cls) {
   const el = $('status');
@@ -482,7 +519,7 @@ async function fetchFrame(i) {
     url: state.url, duration: state.duration, index: i, count: COUNT,
   });
   const img = await loadImg(data.image);
-  state.frames[i] = { time: data.time, img, textBoxes: data.textBoxes || [] };
+  state.frames[i] = { time: data.time, img };
   renderFrameCards();
   stitch();
 }
@@ -518,6 +555,8 @@ async function generate() {
   state.offsets = state.slots.map(() => ({ fx: 0.5, fy: 0.5, z: 1 }));
   state.crops = state.slots.map(() => ({ x: 0, y: 0, w: 1, h: 1 }));
   state.mosaics = [];
+  cropHistory = [];
+  baseValid = false;
   state.activeSlot = null;
   renderFrameCards();
   $('go').disabled = true;
@@ -573,6 +612,10 @@ $('reroll-all').onclick = async () => {
 // ---------- Canvas 拼接（固定输出 1280×720 高清） ----------
 const OUT_W = 1280, OUT_H = 720;
 
+// 底图缓存：画面 + 锐化 + 马赛克（不含 logo）。换 logo 时直接用缓存合成，毫秒级。
+const baseCanvas = document.createElement('canvas');
+let baseValid = false;
+
 function stitch(light) {
   ensureSlots();
   const picked = state.slots.map((fi) => (fi != null ? state.frames[fi] : null));
@@ -583,12 +626,10 @@ function stitch(light) {
     }
     return;
   }
-  const [a, b, c, d] = picked.map((f) => f.img);
-  const canvas = $('result');
-  const ctx = canvas.getContext('2d');
-  canvas.width = OUT_W;
-  canvas.height = OUT_H;
-  paintBg(ctx, canvas);
+  baseCanvas.width = OUT_W;
+  baseCanvas.height = OUT_H;
+  const ctx = baseCanvas.getContext('2d');
+  paintBg(ctx, baseCanvas);
   const W = OUT_W, H = OUT_H;
 
   const cells = layoutCells(W, H);
@@ -610,21 +651,32 @@ function stitch(light) {
     }
   });
 
-  if (state.sharpen && !light) sharpenCanvas(ctx, canvas, 3, 0.9); // 锐化在打码和 logo 之前
+  if (state.sharpenAmt > 0 && !light) sharpenCanvas(ctx, baseCanvas, 3, state.sharpenAmt * 1.1); // 锐化在打码和 logo 之前
 
-  if (state.detext && !light) applyTextBlur(ctx, canvas, cells, picked); // 自动打蒙文字
+  applyMosaics(ctx, baseCanvas);
+  baseValid = true;
+  composeFinal(light);
+}
 
-  applyMosaics(ctx, canvas);
+/** 底图 + logo 合成到预览画布；换 logo 只需调这个，不必重拼底图 */
+function composeFinal(light) {
+  if (!baseValid) return;
+  const canvas = $('result');
+  const ctx = canvas.getContext('2d');
+  canvas.width = OUT_W;
+  canvas.height = OUT_H;
+  ctx.drawImage(baseCanvas, 0, 0);
 
   // 左上角盖 Logo：不加底板，用多层黑色投影把 logo 从画面里衬出来
-  if (state.logo && logoReady) {
+  const le = state.logoName && logoCache[state.logoName];
+  if (le && le.ready) {
     const lw = 400;
-    const lh = Math.round(lw * logoImg.naturalHeight / logoImg.naturalWidth);
+    const lh = Math.round(lw * le.img.naturalHeight / le.img.naturalWidth);
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
     ctx.shadowBlur = 18;
-    ctx.drawImage(logoImg, 24, 24, lw, lh); // 画两遍加深阴影轮廓
-    ctx.drawImage(logoImg, 24, 24, lw, lh);
+    ctx.drawImage(le.img, 24, 24, lw, lh); // 画两遍加深阴影轮廓
+    ctx.drawImage(le.img, 24, 24, lw, lh);
     ctx.restore();
   }
 
@@ -709,47 +761,20 @@ function sharpenCanvas(ctx, canvas, radius = 3, amount = 0.7) {
   ctx.putImageData(orig, 0, 0);
 }
 
-/** 自动打蒙：把每格取景窗内检测到的文字框映射到画布坐标后模糊掉 */
-function applyTextBlur(ctx, canvas, cells, picked) {
-  cells.forEach((cell, i) => {
-    const f = picked[i];
-    if (!f || !f.textBoxes || !f.textBoxes.length) return;
-    const img = f.img;
-    const off = state.offsets[i] || { fx: 0.5, fy: 0.5, z: 1 };
-    const w = coverWindow(img, cell.w, cell.h, off, state.crops[i]);
-    const W0 = img.naturalWidth, H0 = img.naturalHeight;
-    f.textBoxes.forEach((b) => {
-      // 文字框（源图像素）与取景窗求交
-      const x0 = Math.max(b.x * W0, w.sx), y0 = Math.max(b.y * H0, w.sy);
-      const x1 = Math.min((b.x + b.w) * W0, w.sx + w.sw);
-      const y1 = Math.min((b.y + b.h) * H0, w.sy + w.sh);
-      if (x1 - x0 < 4 || y1 - y0 < 4) return;
-      // 映射到画布坐标并按文字高度外扩，保证盖住描边
-      const scaleX = cell.w / w.sw, scaleY = cell.h / w.sh;
-      const pad = (y1 - y0) * 0.4;
-      let cx = cell.x + (x0 - w.sx - pad) * scaleX;
-      let cy = cell.y + (y0 - w.sy - pad) * scaleY;
-      let cw2 = (x1 - x0 + pad * 2) * scaleX;
-      let ch2 = (y1 - y0 + pad * 2) * scaleY;
-      // 钳制在画布内
-      if (cx < 0) { cw2 += cx; cx = 0; }
-      if (cy < 0) { ch2 += cy; cy = 0; }
-      cw2 = Math.min(canvas.width - cx, cw2);
-      ch2 = Math.min(canvas.height - cy, ch2);
-      if (cw2 < 4 || ch2 < 4) return;
-      blurPatch(ctx, canvas, Math.round(cx), Math.round(cy), Math.round(cw2), Math.round(ch2));
-    });
-  });
-}
-
 // ---------- 马赛克 ----------
 const mosaicTmp = document.createElement('canvas');
 
+const MOSAIC_GROW = 14; // 实际打码范围比框选外扩的像素（1280 画布）
+
 function applyMosaics(ctx, canvas) {
   state.mosaics.forEach((r) => {
-    const x = Math.max(0, Math.round(r.x)), y = Math.max(0, Math.round(r.y));
-    const w = Math.min(canvas.width - x, Math.round(r.w));
-    const h = Math.min(canvas.height - y, Math.round(r.h));
+    // 外扩一圈再钳制到画布内，保证框到哪就盖到哪（包括画面边缘）
+    let x = Math.round(r.x - MOSAIC_GROW), y = Math.round(r.y - MOSAIC_GROW);
+    let w = Math.round(r.w + MOSAIC_GROW * 2), h = Math.round(r.h + MOSAIC_GROW * 2);
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    w = Math.min(canvas.width - x, w);
+    h = Math.min(canvas.height - y, h);
     if (w < 4 || h < 4) return;
     if ((r.style || 'blur') === 'pixel') pixelate(ctx, canvas, x, y, w, h);
     else blurPatch(ctx, canvas, x, y, w, h);
@@ -770,117 +795,32 @@ function pixelate(ctx, canvas, x, y, w, h) {
   ctx.imageSmoothingEnabled = true;
 }
 
-/** 打蒙：重高斯模糊 + 羽化边缘，观感比色块自然 */
+/**
+ * 打蒙：磨砂玻璃式模糊（下采样再平滑放大）。
+ * 整个区域 100% 覆盖——包括框选边缘和画面边框，不留羽化空隙。
+ */
 function blurPatch(ctx, canvas, x, y, w, h) {
-  const blur = Math.max(18, Math.min(40, Math.min(w, h) / 5));
-  // 羽化半径按区域大小成比例（固定 14px 在 1280 大画布上看不出），下限保证小框也可见。
-  const feather = Math.max(10, Math.min(48, Math.min(w, h) * 0.18));
-  const pad = Math.round(blur * 2 + feather * 2);
-  const x0 = Math.max(0, x - pad), y0 = Math.max(0, y - pad);
-  const x1 = Math.min(canvas.width, x + w + pad), y1 = Math.min(canvas.height, y + h + pad);
-  const pw = x1 - x0, ph = y1 - y0;
-  mosaicTmp.width = pw; mosaicTmp.height = ph;
+  const f = Math.max(10, Math.round(Math.min(w, h) / 10)); // 缩小倍数 ≈ 模糊强度
+  const bw = Math.max(1, Math.round(w / f));
+  const bh = Math.max(1, Math.round(h / f));
+  mosaicTmp.width = bw; mosaicTmp.height = bh;
   const t = mosaicTmp.getContext('2d');
-  t.filter = `blur(${blur}px)`;
-  t.drawImage(canvas, x0, y0, pw, ph, 0, 0, pw, ph);
-  t.filter = 'none';
-  // 羽化：遮罩盖满【整个框】(不内缩)，模糊向【外】扩 → 框内全覆盖、框外软过渡，边缘不再漏。
-  t.globalCompositeOperation = 'destination-in';
-  t.filter = `blur(${feather}px)`;
-  t.fillStyle = '#fff';
-  t.fillRect(x - x0 - feather, y - y0 - feather, w + feather * 2, h + feather * 2);
-  t.filter = 'none';
-  t.globalCompositeOperation = 'source-over';
-  ctx.drawImage(mosaicTmp, 0, 0, pw, ph, x0, y0, pw, ph);
+  t.imageSmoothingEnabled = true;
+  t.drawImage(canvas, x, y, w, h, 0, 0, bw, bh);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(mosaicTmp, 0, 0, bw, bh, x, y, w, h);
 }
 
 /** 当前布局的单元格列表，下标与卡槽一一对应；斜切布局带裁剪多边形 */
 function layoutCells(W, H) {
-  const L = state.layout;
-  if (L === 'h') {
-    const cw = Math.round(W / 3);
-    return [
-      { x: 0, y: 0, w: cw, h: H },
-      { x: cw, y: 0, w: cw, h: H },
-      { x: cw * 2, y: 0, w: W - cw * 2, h: H },
-    ];
-  }
-  if (L === 'big') {
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
-    return [
-      { x: 0, y: 0, w: bigW, h: H },
-      { x: bigW, y: 0, w: sw, h: sh },
-      { x: bigW, y: sh, w: sw, h: sh },
-    ];
-  }
-  if (L === 'bigr') {
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 2;
-    return [
-      { x: sw, y: 0, w: bigW, h: H },
-      { x: 0, y: 0, w: sw, h: sh },
-      { x: 0, y: sh, w: sw, h: sh },
-    ];
-  }
-  if (L === 'top1') {
-    const th = Math.round(H / 2);
-    return [
-      { x: 0, y: 0, w: W, h: th },
-      { x: 0, y: th, w: W / 2, h: H - th },
-      { x: W / 2, y: th, w: W / 2, h: H - th },
-    ];
-  }
-  if (L === 'center') {
-    const side = Math.round(W / 4), mid = W - side * 2;
-    return [
-      { x: 0, y: 0, w: side, h: H },
-      { x: side, y: 0, w: mid, h: H },
-      { x: side + mid, y: 0, w: side, h: H },
-    ];
-  }
-  if (L === 'single') return [{ x: 0, y: 0, w: W, h: H }];
-  if (L === 'h2') {
-    const cw = Math.round(W / 2);
-    return [
-      { x: 0, y: 0, w: cw, h: H },
-      { x: cw, y: 0, w: W - cw, h: H },
-    ];
-  }
-  if (L === 'grid4') {
-    const cw = Math.round(W / 2), ch = Math.round(H / 2);
-    return [
-      { x: 0, y: 0, w: cw, h: ch },
-      { x: cw, y: 0, w: W - cw, h: ch },
-      { x: 0, y: ch, w: cw, h: H - ch },
-      { x: cw, y: ch, w: W - cw, h: H - ch },
-    ];
-  }
-  if (L === 'big3') {
-    const bigW = Math.round(W * 2 / 3), sw = W - bigW, sh = H / 3;
-    return [
-      { x: 0, y: 0, w: bigW, h: H },
-      { x: bigW, y: 0, w: sw, h: sh },
-      { x: bigW, y: sh, w: sw, h: sh },
-      { x: bigW, y: sh * 2, w: sw, h: sh },
-    ];
-  }
-  // 斜切系列：平行斜线分割
-  const polys =
-    L === 'diag2'
-      ? (() => {
-          const s = 64, m = W / 2;
-          return [
-            [[0, 0], [m + s, 0], [m - s, H], [0, H]],
-            [[m + s, 0], [W, 0], [W, H], [m - s, H]],
-          ];
-        })()
-      : (() => {
-          const s = 56, b1 = W / 3, b2 = (W / 3) * 2;
-          return [
-            [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
-            [[b1 + s, 0], [b2 + s, 0], [b2 - s, H], [b1 - s, H]],
-            [[b2 + s, 0], [W, 0], [W, H], [b2 - s, H]],
-          ];
-        })();
+  if (state.layout === 'single') return [{ x: 0, y: 0, w: W, h: H }];
+  // 斜切三联：平行斜线分割
+  const s = 56, b1 = W / 3, b2 = (W / 3) * 2;
+  const polys = [
+    [[0, 0], [b1 + s, 0], [b1 - s, H], [0, H]],
+    [[b1 + s, 0], [b2 + s, 0], [b2 - s, H], [b1 - s, H]],
+    [[b2 + s, 0], [W, 0], [W, H], [b2 - s, H]],
+  ];
   return polys.map((poly) => {
     const xs = poly.map((p) => p[0]);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -899,9 +839,10 @@ function coverWindow(img, dw, dh, off, crop) {
   const c = crop || { x: 0, y: 0, w: 1, h: 1 };
   const left = c.x * W0;
   const availW = Math.max(16, c.w * W0);
-  // 顶部：全局裁顶和自由裁剪取更深的那个
+  // 上下边界：全局裁顶/裁底和自由裁剪各取更深的那个
   const top = Math.max(Math.min(state.cropTop, 0.2) * H0, c.y * H0);
-  const availH = Math.max(16, (c.y + c.h) * H0 - top);
+  const bottom = Math.min((1 - Math.min(state.cropBottom, 0.2)) * H0, (c.y + c.h) * H0);
+  const availH = Math.max(16, bottom - top);
   const dRatio = dw / dh;
   let sw = availW, sh = availH;
   if (availW / availH > dRatio) sw = sh * dRatio;
@@ -1117,10 +1058,22 @@ $('crop-cancel').onclick = () => {
 };
 $('crop-ok').onclick = () => {
   if (!cropEdit) return;
+  cropHistory.push({ pos: cropEdit.pos, prev: { ...state.crops[cropEdit.pos] } }); // 记录撤销点
   state.crops[cropEdit.pos] = { ...cropEdit.rect };
   state.offsets[cropEdit.pos] = { fx: 0.5, fy: 0.5, z: 1 }; // 裁剪变了，取景回到居中
   cropEdit = null;
   $('crop-modal').style.display = 'none';
+  renderFrameCards();
+  stitch();
+};
+
+// 撤销裁剪：一步步回退每次「应用」
+let cropHistory = [];
+$('crop-undo').onclick = () => {
+  const last = cropHistory.pop();
+  if (!last) return;
+  state.crops[last.pos] = last.prev;
+  state.offsets[last.pos] = { fx: 0.5, fy: 0.5, z: 1 };
   renderFrameCards();
   stitch();
 };
@@ -1134,19 +1087,8 @@ $('mode').onclick = (e) => {
   resultCanvas.style.cursor = state.mode === 'mosaic' ? 'crosshair' : 'grab';
 };
 
-$('sharpen-toggle').onclick = (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  state.sharpen = btn.dataset.sp === '1';
-  [...$('sharpen-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
-  stitch();
-};
-
-$('detext-toggle').onclick = (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  state.detext = btn.dataset.dt === '1';
-  [...$('detext-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
+$('sharpen-amt').oninput = () => {
+  state.sharpenAmt = Math.min(2, Math.max(0, Number($('sharpen-amt').value) || 0));
   stitch();
 };
 
@@ -1187,33 +1129,33 @@ $('layout').onclick = (e) => {
   renderFrameCards(); // 卡槽数量随布局变化
   stitch();
 };
-$('logo-toggle').onclick = (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  state.logo = btn.dataset.lg === '1';
-  [...$('logo-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
-  stitch();
-};
-$('title-input').oninput = (e) => { state.title = e.target.value; stitch(); };
+$('title-input').oninput = (e) => { state.title = e.target.value; composeFinal(); };
 $('title-pos').onclick = (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
   state.titlePos = btn.dataset.tp;
   [...$('title-pos').children].forEach((b) => b.classList.toggle('active', b === btn));
-  stitch();
+  composeFinal();
 };
 $('title-style').onclick = (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
   state.titleStyle = btn.dataset.ts;
   [...$('title-style').children].forEach((b) => b.classList.toggle('active', b === btn));
+  composeFinal();
+};
+
+$('logo-select').onchange = () => {
+  state.logoName = $('logo-select').value;
+  preloadLogo(state.logoName); // 一般已在缓存，未载完时 onload 会补一次合成
+  composeFinal();              // 直接用底图缓存合成，毫秒级
+};
+$('crop-top').oninput = () => {
+  state.cropTop = Math.min(20, Math.max(0, Number($('crop-top').value) || 0)) / 100;
   stitch();
 };
-$('crop').onclick = (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  state.cropTop = Number(btn.dataset.c);
-  [...$('crop').children].forEach((b) => b.classList.toggle('active', b === btn));
+$('crop-bottom').oninput = () => {
+  state.cropBottom = Math.min(20, Math.max(0, Number($('crop-bottom').value) || 0)) / 100;
   stitch();
 };
 
@@ -1229,7 +1171,7 @@ async function updateDownloads() {
   small.width = 640; small.height = 360;
   const sctx = small.getContext('2d');
   sctx.drawImage($('result'), 0, 0, 640, 360);
-  if (state.sharpen) sharpenCanvas(sctx, small, 1, 0.8); // 在 640 输出分辨率上做主力锐化
+  if (state.sharpenAmt > 0) sharpenCanvas(sctx, small, 1, state.sharpenAmt); // 在 640 输出分辨率上做主力锐化
   const sm = await toBlobAsync(small, 'image/jpeg', 0.8);
   // 手机双列预览直接用 640 成品图（所见即所得）
   const smallUrl = small.toDataURL('image/jpeg', 0.9);

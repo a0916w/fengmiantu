@@ -28,8 +28,9 @@ git clone <repo> /opt/fengmiantu && cd /opt/fengmiantu
 npm i                     # 装 @napi-rs/canvas（预编译，无需编译工具）
 ```
 
-`data/`（任务/项目 JSON）和 `logos/`（各项目 logo）是运行时可写目录，**部署时勿覆盖**（已在
-`.gitignore`）。发版更新：`git pull && npm i && 重启服务`。
+`data/`（任务/项目 JSON）是运行时可写目录，**部署时勿覆盖**（已在 `.gitignore`）。
+`logos/` 随仓库走（git 管理），后台上传的新 logo 记得在开发机同步提交，否则发版会少。
+发版更新：`git pull && npm i && 重启服务`。
 
 ## 3. 配环境变量
 
