@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>智能封面图</title>
+<title>使用w封面工坊</title>
 <style>
   /* 自托管封面字体（免费可商用） */
   @font-face {
@@ -276,7 +276,7 @@
 <body>
 <div class="wrap">
   <div class="topbar">
-    <h1><span class="logo">🎬</span>智能封面图</h1>
+    <h1><span class="logo">🎬</span>使用w封面工坊</h1>
     <span class="sub">粘贴 m3u8 链接 · 智能选帧 · 三张拼成一张封面</span>
   </div>
 
@@ -1656,9 +1656,31 @@ $('use-cover').onclick = async () => {
 };
 
 // 从后台跳来：自动填 m3u8、亮出「用作封面」、自动生成。
+// 支持从 URL 预填：?title=标题文字 &color=#ff0000（字色）&font=沐瑶软笔（字体名，见 FONTS）
+// &logo=名字（logo 由上方 logo-list 逻辑处理）。三者都可选，缺省用默认。
 (function initFromQuery() {
   const m3u8 = PICK.get('m3u8');
   if (m3u8) $('url').value = m3u8;
+
+  // 预填标题 / 字色 / 字体（可只传其中一个；有 title 才会新建文字字段）。
+  const qTitle = PICK.get('title');
+  const qColor = PICK.get('color');
+  const qFont = PICK.get('font');
+  if (qTitle && qTitle.trim() !== '') {
+    const patch = { text: qTitle };
+    if (qColor) {
+      const c = qColor[0] === '#' ? qColor : '#' + qColor;
+      if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c)) patch.color = c;
+    }
+    if (qFont) {
+      const f = FONTS.find((x) => x.name === qFont || x.css === qFont);
+      if (f) patch.font = f.css;
+    }
+    $('title-input').value = qTitle;
+    patchField(patch);
+    if (typeof syncTextControls === 'function') syncTextControls();
+  }
+
   if (PICK_EXTERNAL && PICK_CALLBACK) {
     const b = $('use-cover');
     b.style.display = '';
