@@ -266,6 +266,17 @@
           <button data-s="pixel">颗粒</button>
         </div>
         <button class="btn-ghost" id="mosaic-undo" style="padding:6px 10px;font-size:12px">撤销马赛克</button>
+        <input type="text" id="title-input" placeholder="标题(可选)" maxlength="40"
+          style="height:34px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:inherit;padding:0 10px;font:inherit;min-width:150px">
+        <div class="seg" id="title-pos" title="标题位置">
+          <button data-tp="top">上</button>
+          <button data-tp="mid">中</button>
+          <button data-tp="bottom" class="active">下</button>
+        </div>
+        <div class="seg" id="title-style" title="标题样式：黑条=底部半透明条，描边=白字黑描边">
+          <button data-ts="bar" class="active">黑条</button>
+          <button data-ts="outline">描边</button>
+        </div>
       </div>
       <div class="order-strip" id="order-strip"></div>
       <div id="result-box">
@@ -306,6 +317,9 @@ const state = {
   activeSlot: null,                    // 当前高亮的目标卡槽
   layout: 'h',
   logo: true,
+  title: '',                           // 封面标题文字（空=不显示）
+  titlePos: 'bottom',                  // 标题位置：top / mid / bottom
+  titleStyle: 'bar',                   // 标题样式：bar 半透明黑条 / outline 描边
   cropTop: 0.075, // 顶部裁剪，占帧高的比例
   running: false,
 };
@@ -614,6 +628,8 @@ function stitch(light) {
     ctx.restore();
   }
 
+  drawTitle(ctx, canvas); // 标题文字（空则跳过）
+
   if (light) return; // 拖动过程中只重绘画布，跳过下面的重活
 
   // 手机双列预览在 updateDownloads 里用 640 成品图更新（所见即所得）
@@ -629,6 +645,45 @@ function stitch(light) {
 function paintBg(ctx, canvas) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+/** 封面标题：canvas 叠字，导出时随整图缩到 640。超长自动缩字号保证一行放下。 */
+function drawTitle(ctx, canvas) {
+  const text = (state.title || '').trim();
+  if (!text) return;
+  const W = canvas.width, H = canvas.height;
+  const maxW = W * 0.92;
+  const fontOf = (s) => `700 ${s}px -apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif`;
+  let size = Math.round(H * 0.13);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = fontOf(size);
+  while (ctx.measureText(text).width > maxW && size > 14) { size -= 2; ctx.font = fontOf(size); }
+  const cx = W / 2;
+  const margin = H * 0.03;
+  let cy;
+  if (state.titlePos === 'top') cy = size * 0.72 + margin;
+  else if (state.titlePos === 'mid') cy = H / 2;
+  else cy = H - size * 0.72 - margin;
+  if (state.titleStyle === 'bar') {
+    const barH = size * 1.7;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, Math.round(cy - barH / 2), W, Math.round(barH));
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, cx, cy);
+  } else {
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = size * 0.28;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, size * 0.14);
+    ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+    ctx.strokeText(text, cx, cy);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, cx, cy);
+  }
+  ctx.restore();
 }
 
 /**
@@ -1137,6 +1192,21 @@ $('logo-toggle').onclick = (e) => {
   if (!btn) return;
   state.logo = btn.dataset.lg === '1';
   [...$('logo-toggle').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+$('title-input').oninput = (e) => { state.title = e.target.value; stitch(); };
+$('title-pos').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.titlePos = btn.dataset.tp;
+  [...$('title-pos').children].forEach((b) => b.classList.toggle('active', b === btn));
+  stitch();
+};
+$('title-style').onclick = (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.titleStyle = btn.dataset.ts;
+  [...$('title-style').children].forEach((b) => b.classList.toggle('active', b === btn));
   stitch();
 };
 $('crop').onclick = (e) => {
