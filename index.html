@@ -1024,14 +1024,55 @@ function layoutCells(W, H) {
 }
 
 /**
+ * 检测帧的内容区（去掉四周近黑边框，如竖屏视频 pillarbox 的左右黑条），返回 {x,y,w,h}(0~1)。
+ * 结果缓存在 img 上；跨域污染读不到像素、或裁掉过多(误检/整幅偏暗)时退回整图。
+ * 这样直版斜切等「宽扁格子」cover 填充时不会再把源帧自带的黑条一起留下 → 消除黑框。
+ */
+function contentRect(img) {
+  if (img.__contentRect) return img.__contentRect;
+  const full = { x: 0, y: 0, w: 1, h: 1 };
+  const W = img.naturalWidth, H = img.naturalHeight;
+  if (!W || !H) return full; // 未加载完，先别缓存
+  const scale = Math.min(1, 200 / Math.max(W, H));
+  const w = Math.max(1, Math.round(W * scale)), h = Math.max(1, Math.round(H * scale));
+  const cnv = document.createElement('canvas');
+  cnv.width = w; cnv.height = h;
+  const c = cnv.getContext('2d', { willReadFrequently: true });
+  c.drawImage(img, 0, 0, w, h);
+  let data;
+  try { data = c.getImageData(0, 0, w, h).data; }
+  catch (e) { return (img.__contentRect = full); } // 跨域污染，放弃检测
+  const TH = 24; // 近黑阈值
+  const colHas = (x) => { for (let y = 0; y < h; y++) { const i = (y * w + x) * 4; if (data[i] > TH || data[i + 1] > TH || data[i + 2] > TH) return true; } return false; };
+  const rowHas = (y) => { for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (data[i] > TH || data[i + 1] > TH || data[i + 2] > TH) return true; } return false; };
+  let x0 = 0, x1 = w - 1, y0 = 0, y1 = h - 1;
+  while (x0 < x1 && !colHas(x0)) x0++;
+  while (x1 > x0 && !colHas(x1)) x1--;
+  while (y0 < y1 && !rowHas(y0)) y0++;
+  while (y1 > y0 && !rowHas(y1)) y1--;
+  const rect = { x: x0 / w, y: y0 / h, w: (x1 - x0 + 1) / w, h: (y1 - y0 + 1) / h };
+  if (rect.w < 0.4 || rect.h < 0.4) return (img.__contentRect = full); // 安全阀：裁太多不裁
+  return (img.__contentRect = rect);
+}
+
+/**
  * 等比缩放裁剪填满目标区域（object-fit: cover）。
- * 先按比例掐掉源图顶部（去原视频水印），再在剩余区域内取景；
+ * 先自动去掉源帧四周黑边，再按比例掐掉源图顶部（去原视频水印），再在剩余区域内取景；
  * off.fx / off.fy（0~1，0.5 居中）控制取景窗位置，可拖动调整；
  * off.z（≥1，默认 1）为缩放倍数，越大取景窗越小 = 画面越放大。
  */
 function coverWindow(img, dw, dh, off, crop) {
   const W0 = img.naturalWidth, H0 = img.naturalHeight;
-  const c = crop || { x: 0, y: 0, w: 1, h: 1 };
+  // 用户裁剪（默认整图）先与「去黑边内容区」求交，作为实际可用区域
+  const base = crop || { x: 0, y: 0, w: 1, h: 1 };
+  const cr = contentRect(img);
+  const cx = Math.max(base.x, cr.x), cy = Math.max(base.y, cr.y);
+  const c = {
+    x: cx,
+    y: cy,
+    w: Math.max(0.05, Math.min(base.x + base.w, cr.x + cr.w) - cx),
+    h: Math.max(0.05, Math.min(base.y + base.h, cr.y + cr.h) - cy),
+  };
   const left = c.x * W0;
   const availW = Math.max(16, c.w * W0);
   // 上下边界：全局裁顶/裁底和自由裁剪各取更深的那个
