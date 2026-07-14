@@ -128,8 +128,9 @@ const server = http.createServer(async (req, res) => {
         });
         if (cb.status < 200 || cb.status >= 300) {
           // 不回显回调响应体（可能含内部信息）；细节只落服务端日志。
-          console.error('[publish] callback non-2xx', cb.status, String(cb.body).slice(0, 300));
-          return sendJson(res, 502, { error: 'webmm 回调失败' });
+          let cbHost = ''; try { cbHost = new URL(callback).hostname; } catch {}
+          console.error('[publish] callback non-2xx', 'logo=' + logoName, 'host=' + cbHost, 'status=' + cb.status, 'body=' + String(cb.body).slice(0, 300));
+          return sendJson(res, 502, { error: '回调项目失败（HTTP ' + cb.status + '）' });
         }
         return sendJson(res, 200, { ok: true, url });
       } catch (e) {
