@@ -119,13 +119,17 @@ const server = http.createServer(async (req, res) => {
 
       const safeId = externalId.replace(/[^A-Za-z0-9_-]/g, '');
       const filename = `cover-${safeId}-${crypto.randomBytes(4).toString('hex')}.${decoded.ext}`;
+      const tStart = Date.now();
+      console.log(`[publish] start external_id=${externalId} logo=${logoName} size=${decoded.buffer.length}`);
       try {
         const url = await uploadCover(decoded.buffer, filename, publishFtpConfig(logoName));
+        const tFtp = Date.now();
         const cb = await httpPostJson(callback, {
           status: 'completed',
           external_id: externalId,
           outputs: [{ url, selection_score: 1 }],
         });
+        console.log(`[publish] done external_id=${externalId} ftp_ms=${tFtp - tStart} callback_ms=${Date.now() - tFtp} cb_status=${cb.status}`);
         if (cb.status < 200 || cb.status >= 300) {
           // 不回显回调响应体（可能含内部信息）；细节只落服务端日志。
           let cbHost = ''; try { cbHost = new URL(callback).hostname; } catch {}
@@ -135,8 +139,8 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, url });
       } catch (e) {
         // 不把内部错误（FTP 地址/路径等）回给调用方；只落日志。
-        console.error('[publish] failed', e && e.message);
-        return sendJson(res, 502, { error: '发布封面失败' });
+        console.error(`[publish] failed external_id=${externalId} logo=${logoName} ms=${Date.now() - tStart} err=${(e && e.message) || e}`);
+        return sendJson(res, 502, { error: '发布封面失败（服务端上传失败，请重试；已记录日志）' });
       }
     }
 
