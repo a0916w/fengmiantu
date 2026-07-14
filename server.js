@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
 
 const LOGOS_DIR = path.join(__dirname, 'logos');
-const { uploadCover, listUploadTargets, uploadCoverToTarget, uploadTargetConfig, defaultTargetLabel } = require('./lib/upload');
+const { uploadCover, publishFtpConfig, publishCallbackHosts } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
 
 const PORT = process.env.PORT || 3000;
@@ -101,41 +101,21 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 手动网页「上传到 FTP」：logo 专属目标列表 + 默认(兜底)目标（配置见 lib/upload.js）
-    if (req.method === 'GET' && pathname === '/api/upload-targets') {
-      return sendJson(res, 200, { targets: listUploadTargets(), default: defaultTargetLabel() });
-    }
-
-    // 手动网页「上传到 FTP」：把当前封面直接传到选定目标的 FTP，返回可贴进 cover_url 的路径。
-    // target = logo 名 或 'default'（logo 无专属时的兜底）。
-    if (req.method === 'POST' && pathname === '/api/upload-cover') {
-      const { target, image } = await readJsonBody(req);
-      if (!uploadTargetConfig(target)) return sendJson(res, 400, { error: '上传目标无效或未配置' });
-      const decoded = decodeDataUrl(image);
-      if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
-      const filename = `cover-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${decoded.ext}`;
-      try {
-        const out = await uploadCoverToTarget(target, decoded.buffer, filename);
-        return sendJson(res, 200, { ok: true, path: out.path, url: out.url });
-      } catch (e) {
-        // 不回显 FTP 凭证/路径等内部信息，只落日志。
-        console.error('[upload-cover] failed', e && e.message);
-        return sendJson(res, 502, { error: '上传到 FTP 失败，请查看服务端日志' });
-      }
-    }
-
+    // 回调发布：项目从后台跳来（带 ?logo&external_id&callback），做好封面点「用作封面」→
+    // 按 logo 传到对应 FTP + 回调项目更新封面。logo 无专属配置时用全局 FTP_*/COVER_CALLBACK_HOSTS。
     if (req.method === 'POST' && req.url === '/api/publish') {
-      const { image, external_id: externalId, callback } = await readJsonBody(req);
+      const { image, external_id: externalId, callback, logo } = await readJsonBody(req);
       if (!externalId || typeof externalId !== 'string') return sendJson(res, 400, { error: '缺少 external_id' });
-      // 回调地址防 SSRF：拒元数据/回环，配了白名单则必须命中。
-      if (!callbackAllowed(callback)) return sendJson(res, 400, { error: '回调地址不被允许' });
+      const logoName = typeof logo === 'string' ? logo : '';
+      // 回调地址防 SSRF：拒元数据/回环，按该 logo 的白名单校验（缺省全局）。
+      if (!callbackAllowed(callback, publishCallbackHosts(logoName))) return sendJson(res, 400, { error: '回调地址不被允许' });
       const decoded = decodeDataUrl(image);
       if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
 
       const safeId = externalId.replace(/[^A-Za-z0-9_-]/g, '');
       const filename = `cover-${safeId}-${crypto.randomBytes(4).toString('hex')}.${decoded.ext}`;
       try {
-        const url = await uploadCover(decoded.buffer, filename);
+        const url = await uploadCover(decoded.buffer, filename, publishFtpConfig(logoName));
         const cb = await httpPostJson(callback, {
           status: 'completed',
           external_id: externalId,

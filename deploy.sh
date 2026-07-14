@@ -39,40 +39,27 @@ chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR"
 if [ ! -f "$ENV_FILE" ]; then
   cat > "$ENV_FILE" <<'ENVEOF'
 # fengmiantu 秘钥/配置（chmod 600，勿提交 git）。改完真值后重跑 deploy.sh。
+# ===== 默认（全局）配置 = 没配专属的 logo 都用它（如 webmm）=====
 FTP_HOST=ftp.你的图床.com
 FTP_PORT=21
 FTP_USER=xxxxx
 FTP_PASS=xxxxx
 FTP_DIR=/covers
-# 上面 FTP 目录对外的 http 前缀（回给 webmm 的图片地址）
+# 上面 FTP 目录对外的 http 前缀（回给项目的图片地址）
 FTP_URL_PREFIX=https://cdn.你的图床.com/covers
-# 防 SSRF：只放行回调到 webmm 域名（多个逗号分隔）
+# 防 SSRF：默认放行的回调域名（多个逗号分隔）
 COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
 
-# ---- 手动网页「上传到 FTP」按钮 ----
-# 上传目标【跟随选中的 logo】：KEY = logo 名。配了 UPLOAD_<KEY>_FTP_HOST 那组，
-# 该 logo 就自动出现「上传到」按钮（无需 UPLOAD_TARGETS，自动发现）。
-# 值填目标站自己的封面 FTP（如 vodvip 后端的 UPLOAD_FTP_*）：
-#   FTP_DIR    = 目标站 {UPLOAD_FTP_BASE_DIR}/covers（会先 CWD 进去，目录须已存在）
-#   COVER_PATH = 目标站 /{UPLOAD_COVER_URL_PREFIX}/covers（返回给运营贴进「封面链接」的相对路径前缀）
-#   URL_PREFIX = 可选，CDN 完整地址前缀（仅预览用）
-# KEY 用 logo 名（vodvip logo → UPLOAD_VODVIP_*）。要限定只启用某些目标可选配 UPLOAD_TARGETS=vodvip,...
-UPLOAD_VODVIP_LABEL=vodvip
-UPLOAD_VODVIP_FTP_HOST=
-UPLOAD_VODVIP_FTP_PORT=21
-UPLOAD_VODVIP_FTP_USER=
-UPLOAD_VODVIP_FTP_PASS=
-UPLOAD_VODVIP_FTP_DIR=/covers
-UPLOAD_VODVIP_COVER_PATH=/covers
-UPLOAD_VODVIP_URL_PREFIX=
-# 默认(兜底)目标：logo 没配专属 FTP 时用它（如 mm/mmchigua 等）。字段同上。
-# 不填 UPLOAD_DEFAULT_* 则自动退回上面的 FTP_*（webmm 那台）。都没有则该 logo 不显示上传按钮。
-UPLOAD_DEFAULT_LABEL=默认
-UPLOAD_DEFAULT_FTP_HOST=
-UPLOAD_DEFAULT_FTP_USER=
-UPLOAD_DEFAULT_FTP_PASS=
-UPLOAD_DEFAULT_FTP_DIR=
-UPLOAD_DEFAULT_COVER_PATH=
+# ===== 按 logo 分（回调发布 /api/publish）=====
+# 某 logo（项目）要发到不同服务器时，配 LOGO_<大写logo名>_* 覆盖默认；没配的 logo 用上面的全局值。
+# 例：vodvip logo 发到 vodvip 自己的 FTP + 回调 vodvip 域名：
+#LOGO_VODVIP_FTP_HOST=
+#LOGO_VODVIP_FTP_PORT=21
+#LOGO_VODVIP_FTP_USER=
+#LOGO_VODVIP_FTP_PASS=
+#LOGO_VODVIP_FTP_DIR=/covers
+#LOGO_VODVIP_FTP_URL_PREFIX=https://cdn.vodvip域名/covers
+#LOGO_VODVIP_CALLBACK_HOSTS=vodvip回调域名.com
 ENVEOF
   chmod 600 "$ENV_FILE"
   chown root:root "$ENV_FILE"
