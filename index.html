@@ -320,8 +320,6 @@
       </div>
       <div id="ftp-up" style="display:none;margin:0 0 8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span style="font-size:12px;color:var(--muted)">上传到</span>
-          <select id="ftp-target" style="padding:6px 10px;background:var(--panel-2,#1b1e26);color:inherit;border:1px solid var(--border);border-radius:6px;font-size:13px"></select>
           <button class="btn-primary" id="ftp-upload-btn" style="padding:7px 16px;font-size:13px">⬆ 上传到 FTP</button>
           <span id="ftp-msg" style="font-size:12px;color:var(--muted)"></span>
         </div>
@@ -1628,6 +1626,7 @@ $('logo-select').onchange = () => {
   preloadLogo(state.logoName); // 一般已在缓存，未载完时 onload 会补一次合成
   setOrient(/^yini/i.test(state.logoName) ? 'v' : 'h'); // yini 系 logo 默认直版
   composeFinal();              // 直接用底图缓存合成，毫秒级
+  if (typeof refreshFtpUpload === 'function') refreshFtpUpload(); // 上传目标跟随 logo
 };
 $('crop-top').oninput = () => {
   state.cropTop = Math.min(20, Math.max(0, Number($('crop-top').value) || 0)) / 100;
@@ -1745,15 +1744,36 @@ $('use-cover').onclick = async () => {
 })();
 
 // ---------- 手动「上传到 FTP」（vodvip 等，直接传到目标站封面 FTP，不走回调）----------
-// 配了 UPLOAD_TARGETS 才显示；上传后返回相对路径，运营复制粘到后台视频「封面链接」。
+// 上传目标【跟随选中的 logo】：logo 名 == 已配置的上传目标 KEY 才显示按钮，传到该站 FTP。
+// 上传后返回相对路径，运营复制粘到后台视频「封面链接」。
+let ftpTargets = new Map(); // logo名/KEY -> label
+
+// 按当前 logo 决定是否显示上传按钮、以及传去哪个目标。
+function refreshFtpUpload() {
+  const wrap = document.getElementById('ftp-up');
+  if (!wrap) return;
+  const key = state.logoName || '';
+  if (key && ftpTargets.has(key)) {
+    wrap.style.display = '';
+    const btn = document.getElementById('ftp-upload-btn');
+    if (btn) btn.textContent = '⬆ 上传到 ' + ftpTargets.get(key);
+  } else {
+    wrap.style.display = 'none';
+    const rslt = document.getElementById('ftp-result');
+    if (rslt) rslt.style.display = 'none';
+    const msg = document.getElementById('ftp-msg');
+    if (msg) msg.textContent = '';
+  }
+}
+
 (async function initFtpUpload() {
   let targets = [];
   try { targets = ((await (await fetch('/api/upload-targets')).json()).targets) || []; } catch {}
-  if (!targets.length) return;
-  const wrap = $('ftp-up'), sel = $('ftp-target');
-  targets.forEach((t) => { const o = document.createElement('option'); o.value = t.key; o.textContent = t.label; sel.appendChild(o); });
-  wrap.style.display = '';
+  ftpTargets = new Map(targets.map((t) => [t.key, t.label]));
+
   $('ftp-upload-btn').onclick = async () => {
+    const target = state.logoName || '';
+    if (!ftpTargets.has(target)) return alert('当前 logo「' + (target || '无') + '」没有对应的上传目标');
     if (!smallBlob) return alert('请先生成封面');
     const btn = $('ftp-upload-btn'), msg = $('ftp-msg');
     btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = '上传中…';
@@ -1761,11 +1781,11 @@ $('use-cover').onclick = async () => {
       const image = await blobToDataUrl(smallBlob);
       const r = await fetch('/api/upload-cover', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: sel.value, image }),
+        body: JSON.stringify({ target, image }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || '上传失败');
-      msg.style.color = 'var(--ok,#22c55e)'; msg.textContent = '✓ 已上传';
+      msg.style.color = 'var(--ok,#22c55e)'; msg.textContent = '✓ 已上传到 ' + ftpTargets.get(target);
       $('ftp-path').value = j.path;
       $('ftp-result').style.display = '';
     } catch (e) {
@@ -1779,6 +1799,8 @@ $('use-cover').onclick = async () => {
       .catch(() => { document.execCommand('copy'); });
     else document.execCommand('copy');
   };
+
+  refreshFtpUpload(); // 目标加载完，按当前 logo 决定按钮显隐
 })();
 </script>
 </body>
