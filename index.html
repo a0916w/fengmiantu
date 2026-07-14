@@ -1075,8 +1075,8 @@ function coverWindow(img, dw, dh, off, crop) {
   };
   const left = c.x * W0;
   const availW = Math.max(16, c.w * W0);
-  // 上下边界：全局裁顶/裁底和自由裁剪各取更深的那个
-  const top = Math.max(Math.min(state.cropTop, 0.2) * H0, c.y * H0);
+  // 上下边界：全局裁顶/裁底和自由裁剪各取更深的那个（再多裁 2px 去顶部残留细条）
+  const top = Math.max(Math.min(state.cropTop, 0.2) * H0, c.y * H0) + 2;
   const bottom = Math.min((1 - Math.min(state.cropBottom, 0.2)) * H0, (c.y + c.h) * H0);
   const availH = Math.max(16, bottom - top);
   const dRatio = dw / dh;
