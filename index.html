@@ -345,6 +345,9 @@
             <option value="">无 Logo</option>
           </select>
         </label>
+        <label class="numctl" title="Logo 大小：占封面宽度的比例，100% = 默认（部分 logo 默认更小）">Logo大小
+          <input type="number" id="logo-scale" min="30" max="200" step="5" value="100"><span>%</span>
+        </label>
       </div>
       <div class="ctl-row">
         <label class="numctl" title="高清锐利化强度：0 关闭，0.8 适中，2 最强">锐化
@@ -434,6 +437,7 @@ const state = {
   activeSlot: null,                    // 当前高亮的目标卡槽
   layout: 'diag',
   logoName: '',      // 选中的 logo 名，空 = 不印
+  logoScale: 1,      // logo 大小倍数（1 = 默认比例；可在页面调整，部分 logo 有更小的默认值）
 
   cropTop: 0.075,    // 顶部裁剪，占帧高的比例
   cropBottom: 0,     // 底部裁剪，占帧高的比例
@@ -453,6 +457,21 @@ function preloadLogo(name) {
   e.img.src = '/logo-img/' + encodeURIComponent(name);
 }
 
+// 各 logo 的默认大小倍数（没列到的默认 1）。vodvip 默认更小。
+const LOGO_DEFAULT_SCALE = { vodvip: 0.65 };
+// 切到某 logo 时套用它的默认大小，并同步「Logo大小」输入框。
+function applyLogoDefaultScale(name) {
+  state.logoScale = LOGO_DEFAULT_SCALE[name] != null ? LOGO_DEFAULT_SCALE[name] : 1;
+  const inp = $('logo-scale');
+  if (inp) inp.value = Math.round(state.logoScale * 100);
+}
+// 手动调整 Logo 大小
+$('logo-scale').oninput = () => {
+  const pct = Number($('logo-scale').value) || 100;
+  state.logoScale = Math.min(2, Math.max(0.3, pct / 100));
+  composeFinal();
+};
+
 // 拉取 logo 列表填充下拉框并全部预载。
 // 默认选择优先级：URL ?logo=<名字>（命中库里的名字）> mm > 列表第一个
 fetch('/api/logo-list')
@@ -471,6 +490,7 @@ fetch('/api/logo-list')
     const def = list.includes(want) ? want : list.includes('mm') ? 'mm' : list[0] || '';
     sel.value = def;
     state.logoName = def;
+    applyLogoDefaultScale(def); // 套用该 logo 的默认大小
     if (/^yini/i.test(def)) setOrient('v'); // yini 系 logo 默认直版
     if (baseValid) composeFinal();
   })
@@ -787,7 +807,7 @@ function composeFinal(light) {
   const le = state.logoName && logoCache[state.logoName];
   if (le && le.ready) {
     // 直版画布窄，logo 占宽比例放大一档才够醒目
-    const lw = Math.round(canvas.width * (state.orient === 'v' ? 0.42 : 0.31));
+    const lw = Math.round(canvas.width * (state.orient === 'v' ? 0.42 : 0.31) * (state.logoScale || 1));
     const lh = Math.round(lw * le.img.naturalHeight / le.img.naturalWidth);
     const m = Math.round(canvas.width * 0.019);
     ctx.save();
@@ -1623,6 +1643,7 @@ $('orient').onclick = (e) => {
 
 $('logo-select').onchange = () => {
   state.logoName = $('logo-select').value;
+  applyLogoDefaultScale(state.logoName); // 套用该 logo 的默认大小
   preloadLogo(state.logoName); // 一般已在缓存，未载完时 onload 会补一次合成
   setOrient(/^yini/i.test(state.logoName) ? 'v' : 'h'); // yini 系 logo 默认直版
   composeFinal();              // 直接用底图缓存合成，毫秒级
