@@ -108,7 +108,12 @@ const server = http.createServer(async (req, res) => {
       if (!externalId || typeof externalId !== 'string') return sendJson(res, 400, { error: '缺少 external_id' });
       const logoName = typeof logo === 'string' ? logo : '';
       // 回调地址防 SSRF：拒元数据/回环，按该 logo 的白名单校验（缺省全局）。
-      if (!callbackAllowed(callback, publishCallbackHosts(logoName))) return sendJson(res, 400, { error: '回调地址不被允许' });
+      const cbHosts = publishCallbackHosts(logoName);
+      if (!callbackAllowed(callback, cbHosts)) {
+        let cbHost = ''; try { cbHost = new URL(callback).hostname; } catch {}
+        console.error('[publish] callback rejected', 'logo=' + logoName, 'callbackHost=' + cbHost, 'allow=' + JSON.stringify(cbHosts));
+        return sendJson(res, 400, { error: '回调地址不被允许' });
+      }
       const decoded = decodeDataUrl(image);
       if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
 
