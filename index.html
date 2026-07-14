@@ -1703,9 +1703,12 @@ $('use-cover').onclick = async () => {
   btn.disabled = true; btn.textContent = '上传中…';
   try {
     const image = await blobToDataUrl(smallBlob);
+    // logo 路由优先用 URL 的 ?logo=（项目跳来时带的，是路由到哪个站的权威来源），
+    // 其次才用当前选中的 logo；避免 logo 库没加载到时 state.logoName 为空导致回调白名单退回全局。
+    const routeLogo = PICK.get('logo') || state.logoName || '';
     const r = await fetch('/api/publish', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image, external_id: PICK_EXTERNAL, callback: PICK_CALLBACK, logo: state.logoName || '' }),
+      body: JSON.stringify({ image, external_id: PICK_EXTERNAL, callback: PICK_CALLBACK, logo: routeLogo }),
     });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.error || j.detail || '上传失败');
