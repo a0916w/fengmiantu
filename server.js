@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
 
 const LOGOS_DIR = path.join(__dirname, 'logos');
-const { uploadCover, listUploadTargets, uploadCoverToTarget } = require('./lib/upload');
+const { uploadCover, listUploadTargets, uploadCoverToTarget, uploadTargetConfig, defaultTargetLabel } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
 
 const PORT = process.env.PORT || 3000;
@@ -101,15 +101,16 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 手动网页「上传到 FTP」：可选的上传目标列表（各目标一台 FTP，配置见 lib/upload.js）
+    // 手动网页「上传到 FTP」：logo 专属目标列表 + 默认(兜底)目标（配置见 lib/upload.js）
     if (req.method === 'GET' && pathname === '/api/upload-targets') {
-      return sendJson(res, 200, { targets: listUploadTargets() });
+      return sendJson(res, 200, { targets: listUploadTargets(), default: defaultTargetLabel() });
     }
 
     // 手动网页「上传到 FTP」：把当前封面直接传到选定目标的 FTP，返回可贴进 cover_url 的路径。
+    // target = logo 名 或 'default'（logo 无专属时的兜底）。
     if (req.method === 'POST' && pathname === '/api/upload-cover') {
       const { target, image } = await readJsonBody(req);
-      if (!listUploadTargets().some((t) => t.key === target)) return sendJson(res, 400, { error: '上传目标无效或未配置' });
+      if (!uploadTargetConfig(target)) return sendJson(res, 400, { error: '上传目标无效或未配置' });
       const decoded = decodeDataUrl(image);
       if (!decoded) return sendJson(res, 400, { error: '封面图数据非法（需 webp/jpeg base64，≤8MB）' });
       const filename = `cover-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${decoded.ext}`;
