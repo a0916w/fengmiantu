@@ -49,13 +49,14 @@ FTP_URL_PREFIX=https://cdn.你的图床.com/covers
 # 防 SSRF：只放行回调到 webmm 域名（多个逗号分隔）
 COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
 
-# ---- 手动网页「上传到 FTP」按钮（各项目一台封面 FTP；不填则页面不显示该按钮）----
-# UPLOAD_TARGETS 逗号分隔，每个 KEY 对应一组 UPLOAD_<KEY>_* 配置。
+# ---- 手动网页「上传到 FTP」按钮 ----
+# 上传目标【跟随选中的 logo】：KEY = logo 名。配了 UPLOAD_<KEY>_FTP_HOST 那组，
+# 该 logo 就自动出现「上传到」按钮（无需 UPLOAD_TARGETS，自动发现）。
 # 值填目标站自己的封面 FTP（如 vodvip 后端的 UPLOAD_FTP_*）：
 #   FTP_DIR    = 目标站 {UPLOAD_FTP_BASE_DIR}/covers（会先 CWD 进去，目录须已存在）
 #   COVER_PATH = 目标站 /{UPLOAD_COVER_URL_PREFIX}/covers（返回给运营贴进「封面链接」的相对路径前缀）
 #   URL_PREFIX = 可选，CDN 完整地址前缀（仅预览用）
-UPLOAD_TARGETS=vodvip
+# KEY 用 logo 名（vodvip logo → UPLOAD_VODVIP_*）。要限定只启用某些目标可选配 UPLOAD_TARGETS=vodvip,...
 UPLOAD_VODVIP_LABEL=vodvip
 UPLOAD_VODVIP_FTP_HOST=
 UPLOAD_VODVIP_FTP_PORT=21
