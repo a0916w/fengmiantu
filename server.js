@@ -67,13 +67,18 @@ const server = http.createServer(async (req, res) => {
       if (allow.length && !allow.includes(host)) return sendJson(res, 403, { error: '不在代理白名单' });
       try {
         const { contentType, buffer } = await httpGetImage(target);
-        if (!/^image\//i.test(contentType)) return sendJson(res, 415, { error: '非图片内容' });
+        // 只放位图；拒 svg（会带脚本，同域返回=存储型 XSS）+ CSP/sandbox 兜底。
+        const ct = String(contentType).split(';')[0].trim().toLowerCase();
+        if (!/^image\/(png|jpe?g|webp|gif|bmp)$/.test(ct)) {
+          return sendJson(res, 415, { error: '仅支持位图图片(png/jpg/webp/gif/bmp，不含 svg)' });
+        }
         res.writeHead(200, {
-          'Content-Type': contentType,
+          'Content-Type': ct,
           'Content-Length': buffer.length,
           'Cache-Control': 'public, max-age=300',
-          'Access-Control-Allow-Origin': '*',
           'X-Content-Type-Options': 'nosniff',
+          'Content-Disposition': 'inline',
+          'Content-Security-Policy': "default-src 'none'; sandbox",
         });
         return res.end(buffer);
       } catch (e) {
