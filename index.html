@@ -863,6 +863,9 @@ function loadOriginal(src, opts) {
   img.onload = () => {
     origState.img = img;
     origState.off = { fx: 0.5, fy: 0.5, z: 1 };
+    // switchMode:false → 只把原图载入备用，不切换到盖logo模式（从其它页带 cover 过来时用：
+    // 默认还是「新作封面」从 m3u8 抽帧，操作员想用原图再手动切「原有封面盖logo」即可）。
+    if (opts && opts.switchMode === false) return;
     setUiMode('logo');
     setStatus('原封面已载入：滚轮缩放 / 拖动取景，选 logo 后可下载或用作封面', 'ok');
     buildOriginalBase();
@@ -1842,8 +1845,9 @@ $('use-cover').onclick = async () => {
   if (m3u8) $('url').value = m3u8;
 
   // 来源带原封面过来：?cover=<url> → 自动进「原有封面盖logo」模式并载入原图。
+  // 从其它页带 cover 过来：只把原图载入备用（不切模式），默认仍是「新作封面」从 m3u8 抽帧。
   const cover = PICK.get('cover');
-  if (cover) loadOriginal(cover, { remote: true });
+  if (cover) loadOriginal(cover, { remote: true, switchMode: false });
 
   // 预填标题 / 字色 / 字体（可只传其中一个；有 title 才会新建文字字段）。
   const qTitle = PICK.get('title');
@@ -1868,7 +1872,7 @@ $('use-cover').onclick = async () => {
     const b = $('use-cover');
     b.style.display = '';
     // 带了原封面就走盖logo模式，不自动抽帧生成；否则老流程自动生成。
-    if (m3u8 && !cover && typeof generate === 'function') generate();
+    if (m3u8 && typeof generate === 'function') generate(); // 即使带了 cover 也默认从 m3u8 自动生成新封面
   }
 })();
 
