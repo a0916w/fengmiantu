@@ -1744,20 +1744,29 @@ let smallBlob = null, exportSeq = 0;
 const toBlobAsync = (cv, type, q) => new Promise((r) => cv.toBlob(r, type, q));
 const kb = (n) => (n / 1024).toFixed(0) + 'KB';
 
+// 导出尺寸：盖logo模式 = 原图尺寸（保持不变），新做封面 = 固定 640×360 / 540×720。
+function exportSize() {
+  if (uiMode === 'logo') { const r = $('result'); return { exW: r.width, exH: r.height }; }
+  const d = dims();
+  return { exW: d.exW, exH: d.exH };
+}
+
 async function updateDownloads() {
   const seq = ++exportSeq;
-  const { exW, exH } = dims();
+  const { exW, exH } = exportSize();
   const small = document.createElement('canvas');
   small.width = exW; small.height = exH;
   const sctx = small.getContext('2d');
   sctx.drawImage($('result'), 0, 0, exW, exH);
-  if (state.sharpenAmt > 0) sharpenCanvas(sctx, small, 1, state.sharpenAmt); // 在输出分辨率上做主力锐化
+  // 盖logo模式保持原图不动、不锐化；新做封面才在输出分辨率上做主力锐化。
+  if (uiMode !== 'logo' && state.sharpenAmt > 0) sharpenCanvas(sctx, small, 1, state.sharpenAmt);
   const sm = await toBlobAsync(small, 'image/jpeg', 0.8);
-  // 手机双列预览直接用 640 成品图（所见即所得）
+  // 手机双列预览直接用成品图（所见即所得）
   const smallUrl = small.toDataURL('image/jpeg', 0.9);
   document.querySelectorAll('.pv').forEach((img) => (img.src = smallUrl));
   if (seq !== exportSeq) return; // 期间又重新拼接了，丢弃本次结果
   smallBlob = sm;
+  $('out-size').textContent = `${exW}×${exH} JPG`;
   $('download-sm').textContent = `⬇ 下载封面图 · ${kb(sm.size)}`;
   const uc = $('use-cover');
   if (uc && uc.style.display !== 'none') { uc.disabled = false; uc.textContent = '✓ 用作封面'; }
@@ -1767,7 +1776,7 @@ $('download-sm').onclick = () => {
   if (!smallBlob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(smallBlob);
-  a.download = `cover-${dims().exW}x${dims().exH}-${Date.now()}.jpg`;
+  a.download = `cover-${exportSize().exW}x${exportSize().exH}-${Date.now()}.jpg`;
   a.click();
   URL.revokeObjectURL(a.href);
 };
