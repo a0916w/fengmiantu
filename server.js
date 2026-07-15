@@ -14,9 +14,24 @@ const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/m
 
 const LOGOS_DIR = path.join(__dirname, 'logos');
 const { uploadCover, publishUploadConfig, publishCallbackHosts } = require('./lib/upload');
-const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
+const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, httpGetImage, callbackAllowed } = require('./lib/net');
 
 const PORT = process.env.PORT || 3000;
+
+// SSRF 兜底：拒绝回环 / 私网 / 链路本地(含云元数据 169.254) 主机。
+function isBlockedHost(h) {
+  h = String(h || '').toLowerCase();
+  if (h === '' || h === 'localhost' || h === '::1' || h === '[::1]' || h.endsWith('.local')) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 0 || a === 127 || a === 10) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  return false;
+}
 
 // ---------- HTTP ----------
 
@@ -40,6 +55,30 @@ const server = http.createServer(async (req, res) => {
         names = fs.readdirSync(LOGOS_DIR).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)).sort();
       } catch {}
       return sendJson(res, 200, { logos: names });
+    }
+
+    // 原封面代理：同域中转远程图片，绕过 canvas 跨域污染（「原有封面盖logo」用 ?cover= 时）。
+    if (req.method === 'GET' && pathname === '/api/proxy-image') {
+      const target = new URL(req.url, 'http://localhost').searchParams.get('url') || '';
+      let host = '';
+      try { host = new URL(target).hostname; } catch { return sendJson(res, 400, { error: 'url 非法' }); }
+      if (isBlockedHost(host)) return sendJson(res, 403, { error: '目标地址不允许' });
+      const allow = (process.env.COVER_PROXY_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (allow.length && !allow.includes(host)) return sendJson(res, 403, { error: '不在代理白名单' });
+      try {
+        const { contentType, buffer } = await httpGetImage(target);
+        if (!/^image\//i.test(contentType)) return sendJson(res, 415, { error: '非图片内容' });
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': buffer.length,
+          'Cache-Control': 'public, max-age=300',
+          'Access-Control-Allow-Origin': '*',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        return res.end(buffer);
+      } catch (e) {
+        return sendJson(res, 502, { error: '拉取失败: ' + ((e && e.message) || e) });
+      }
     }
     // 自托管字体（fonts/*.woff2|ttf），封面文字用
     if (req.method === 'GET' && pathname.startsWith('/fonts/')) {

@@ -858,7 +858,8 @@ function buildOriginalBase(light) {
 // CORS，否则导出画布会被污染；本地上传无此限制。
 function loadOriginal(src, opts) {
   const img = new Image();
-  if (opts && opts.remote) img.crossOrigin = 'anonymous';
+  // 远程链接走同域代理（/api/proxy-image），绕过 canvas 跨域污染；本地上传(objectURL)直接用。
+  const realSrc = (opts && opts.remote) ? ('/api/proxy-image?url=' + encodeURIComponent(src)) : src;
   img.onload = () => {
     origState.img = img;
     origState.off = { fx: 0.5, fy: 0.5, z: 1 };
@@ -866,8 +867,8 @@ function loadOriginal(src, opts) {
     setStatus('原封面已载入：滚轮缩放 / 拖动取景，选 logo 后可下载或用作封面', 'ok');
     buildOriginalBase();
   };
-  img.onerror = () => setStatus('原封面加载失败（链接失效或跨域被拦）', 'err');
-  img.src = src;
+  img.onerror = () => setStatus('原封面加载失败（链接失效或代理拉取失败）', 'err');
+  img.src = realSrc;
 }
 
 function setUiMode(mode) {
