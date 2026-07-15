@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/media');
 
 const LOGOS_DIR = path.join(__dirname, 'logos');
-const { uploadCover, publishFtpConfig, publishCallbackHosts } = require('./lib/upload');
+const { uploadCover, publishUploadConfig, publishCallbackHosts } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, callbackAllowed } = require('./lib/net');
 
 const PORT = process.env.PORT || 3000;
@@ -122,7 +122,7 @@ const server = http.createServer(async (req, res) => {
       const tStart = Date.now();
       console.log(`[publish] start external_id=${externalId} logo=${logoName} size=${decoded.buffer.length}`);
       try {
-        const url = await uploadCover(decoded.buffer, filename, publishFtpConfig(logoName));
+        const url = await uploadCover(decoded.buffer, filename, publishUploadConfig(logoName));
         const tFtp = Date.now();
         const cb = await httpPostJson(callback, {
           status: 'completed',
