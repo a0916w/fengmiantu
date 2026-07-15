@@ -297,13 +297,24 @@
 
   <div class="main">
     <div class="card">
-      <div class="input-row">
+      <div class="ctl-row" style="margin-bottom:10px">
+        <div class="seg" id="uimode" title="新做封面: m3u8 抽帧拼图 / 原有封面盖logo: 用原图只叠 logo">
+          <button data-u="cover" class="active">新做封面</button>
+          <button data-u="logo">原有封面盖logo</button>
+        </div>
+      </div>
+      <div class="input-row" id="row-cover">
         <input type="text" id="url" placeholder="https://example.com/video/index.m3u8" spellcheck="false"
                value="https://back_only.ffkm25.com/common/msdl//dd140d5457926a329f7198bf2__1183554/hls/1/index.m3u8">
         <button class="btn-primary" id="go" style="padding:11px 22px">生成封面</button>
       </div>
+      <div class="input-row" id="row-logo" style="display:none">
+        <button class="btn-primary" id="upload-original" style="padding:11px 22px">📁 上传原封面</button>
+        <input type="file" id="original-file" accept="image/*" style="display:none">
+        <span class="status" style="margin:0;align-self:center">上传或从来源带入原封面，可缩放/拖动后只叠 logo</span>
+      </div>
       <div class="status" id="status">智能选帧会自动避开黑屏和转场画面</div>
-      <div class="section-title">
+      <div class="section-title" id="frames-title">
         <h2>候选帧 <span style="color:var(--muted);font-size:12px;font-weight:400">点击选帧，按布局用 1–4 张</span></h2>
         <button class="btn-ghost" id="reroll-all" disabled>🎲 全部换一批</button>
       </div>
@@ -336,7 +347,7 @@
           <input type="number" id="logo-scale" min="30" max="200" step="5" value="100"><span>%</span>
         </label>
       </div>
-      <div class="ctl-row">
+      <div class="ctl-row" id="row-frameadj">
         <label class="numctl" title="高清锐利化强度：0 关闭，0.8 适中，2 最强">锐化
           <input type="number" id="sharpen-amt" min="0" max="2" step="0.1" value="0.8">
         </label>
@@ -348,7 +359,7 @@
         </label>
         <button class="btn-ghost sm" id="crop-undo">撤销裁剪</button>
       </div>
-      <div class="ctl-row" style="margin-bottom:10px">
+      <div class="ctl-row" id="row-mosaic" style="margin-bottom:10px">
         <div class="seg" id="mode" title="取景：拖动/滚轮调整画面；马赛克：在图上框选打码">
           <button data-m="pan" class="active">取景</button>
           <button data-m="mosaic">马赛克</button>
@@ -432,6 +443,10 @@ const state = {
 };
 
 // 左上角 Logo 水印：全部预载进缓存，切换零等待
+// 界面模式：cover=新做封面(m3u8抽帧拼图) / logo=原有封面盖logo(原图当底图只叠logo)
+let uiMode = 'cover';
+const origState = { img: null, off: { fx: 0.5, fy: 0.5, z: 1 } };
+
 const logoCache = {}; // name -> { img, ready }
 
 function preloadLogo(name) {
@@ -823,6 +838,49 @@ function composeFinal(light) {
 function paintBg(ctx, canvas) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// ---------- 原有封面盖 logo 模式 ----------
+// 底图 = 原图本身（保持原尺寸）；复用取景拖动/滚轮缩放（origState.off）+ logo/文字/发布。
+function buildOriginalBase(light) {
+  const img = origState.img;
+  if (!img || !img.naturalWidth) return;
+  baseCanvas.width = img.naturalWidth;
+  baseCanvas.height = img.naturalHeight;
+  const ctx = baseCanvas.getContext('2d');
+  paintBg(ctx, baseCanvas);
+  drawCover(ctx, img, 0, 0, baseCanvas.width, baseCanvas.height, origState.off);
+  baseValid = true;
+  composeFinal(light);
+}
+
+// 载入原封面（本地上传的 objectURL 或来源带来的 http 链接）。远程链接需该主机允许
+// CORS，否则导出画布会被污染；本地上传无此限制。
+function loadOriginal(src, opts) {
+  const img = new Image();
+  if (opts && opts.remote) img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    origState.img = img;
+    origState.off = { fx: 0.5, fy: 0.5, z: 1 };
+    setUiMode('logo');
+    setStatus('原封面已载入：滚轮缩放 / 拖动取景，选 logo 后可下载或用作封面', 'ok');
+    buildOriginalBase();
+  };
+  img.onerror = () => setStatus('原封面加载失败（链接失效或跨域被拦）', 'err');
+  img.src = src;
+}
+
+function setUiMode(mode) {
+  uiMode = mode === 'logo' ? 'logo' : 'cover';
+  const isLogo = uiMode === 'logo';
+  [...$('uimode').children].forEach((b) => b.classList.toggle('active', b.dataset.u === uiMode));
+  $('row-cover').style.display = isLogo ? 'none' : '';
+  $('row-logo').style.display = isLogo ? '' : 'none';
+  // 帧相关的控件在盖logo模式下无意义，隐藏（保留 logo / 文字 / 下载）。
+  ['frames-title', 'frames', 'layout', 'orient', 'row-frameadj', 'row-mosaic', 'order-strip'].forEach((id) => {
+    const el = $(id); if (el) el.style.display = isLogo ? 'none' : '';
+  });
+  if (isLogo && origState.img) buildOriginalBase();
 }
 
 /**
@@ -1245,6 +1303,15 @@ resultCanvas.addEventListener('pointerdown', (e) => {
     syncTextControls();
     composeFinal(true);
   }
+  // 盖logo模式：整张原图当一个取景层，空处拖动改 origState.off
+  if (uiMode === 'logo') {
+    if (!origState.img) return;
+    drag = { orig: true, x0: e.clientX, y0: e.clientY, fx0: origState.off.fx, fy0: origState.off.fy };
+    resultCanvas.setPointerCapture(e.pointerId);
+    resultCanvas.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
   const i = cellIndexAt(p);
   if (i < 0) return;
   const f = state.slots[i] != null ? state.frames[state.slots[i]] : null;
@@ -1309,6 +1376,20 @@ resultCanvas.addEventListener('pointermove', (e) => {
     return;
   }
   if (!drag) return;
+  if (drag.orig) {
+    const img = origState.img, off = origState.off;
+    const W = baseCanvas.width, H = baseCanvas.height;
+    const w = coverWindow(img, W, H, off);
+    const rect = resultCanvas.getBoundingClientRect();
+    const cssToCanvas = resultCanvas.width / rect.width;
+    const canvasToSrc = w.sw / W;
+    const dxSrc = (e.clientX - drag.x0) * cssToCanvas * canvasToSrc;
+    const dySrc = (e.clientY - drag.y0) * cssToCanvas * canvasToSrc;
+    if (w.slackX > 1) off.fx = clamp01(drag.fx0 - dxSrc / w.slackX);
+    if (w.slackY > 1) off.fy = clamp01(drag.fy0 - dySrc / w.slackY);
+    buildOriginalBase(true);
+    return;
+  }
   const cell = lastCells[drag.i];
   const img = state.frames[state.slots[drag.i]].img;
   const off = state.offsets[drag.i];
@@ -1339,9 +1420,11 @@ const endDrag = () => {
     return;
   }
   if (!drag) return;
+  const wasOrig = drag.orig;
   drag = null;
   resultCanvas.style.cursor = 'grab';
-  stitch(); // 松手后完整更新手机预览和下载体积
+  if (wasOrig) buildOriginalBase(); // 松手后完整更新手机预览和下载体积
+  else stitch();
 };
 resultCanvas.addEventListener('pointerup', endDrag);
 resultCanvas.addEventListener('pointercancel', endDrag);
@@ -1480,6 +1563,16 @@ $('mosaic-undo').onclick = () => {
 // 滚轮缩放：悬停在哪一格就缩放哪一格（放大 = 裁得更紧）
 let wheelTimer = null;
 resultCanvas.addEventListener('wheel', (e) => {
+  if (uiMode === 'logo') {
+    if (!origState.img) return;
+    e.preventDefault();
+    const off = origState.off;
+    off.z = Math.min(4, Math.max(1, (off.z || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+    buildOriginalBase(true);
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => buildOriginalBase(), 250);
+    return;
+  }
   if (state.mode === 'mosaic') return;
   const i = cellIndexAt(canvasPoint(e));
   if (i < 0) return;
@@ -1678,6 +1771,17 @@ $('download-sm').onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 
+$('uimode').onclick = (e) => {
+  const b = e.target.closest('button');
+  if (b) setUiMode(b.dataset.u);
+};
+$('upload-original').onclick = () => $('original-file').click();
+$('original-file').onchange = (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (file) loadOriginal(URL.createObjectURL(file));
+  e.target.value = '';
+};
+
 $('go').onclick = generate;
 $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') generate(); });
 
@@ -1727,6 +1831,10 @@ $('use-cover').onclick = async () => {
   const m3u8 = PICK.get('m3u8');
   if (m3u8) $('url').value = m3u8;
 
+  // 来源带原封面过来：?cover=<url> → 自动进「原有封面盖logo」模式并载入原图。
+  const cover = PICK.get('cover');
+  if (cover) loadOriginal(cover, { remote: true });
+
   // 预填标题 / 字色 / 字体（可只传其中一个；有 title 才会新建文字字段）。
   const qTitle = PICK.get('title');
   const qColor = PICK.get('color');
@@ -1749,7 +1857,8 @@ $('use-cover').onclick = async () => {
   if (PICK_EXTERNAL && PICK_CALLBACK) {
     const b = $('use-cover');
     b.style.display = '';
-    if (m3u8 && typeof generate === 'function') generate();
+    // 带了原封面就走盖logo模式，不自动抽帧生成；否则老流程自动生成。
+    if (m3u8 && !cover && typeof generate === 'function') generate();
   }
 })();
 
