@@ -19,13 +19,19 @@ const { logUsage, readUsage, aggregate } = require('./lib/usage');
 
 const PORT = process.env.PORT || 3000;
 
-// 运营指标接口 /api/report/ops 的 Bearer 口令（与响脱AI 等一致的 provider 契约）。
-// 未设置则开放（便于本地/未接入时）。运营系统(ops-report)按此拉取。
+// 运营指标接口 /api/report/ops 的 Bearer 口令。运营系统(ops-report)按 provider 契约拉取。
+// 未设置则**关闭**端点(503)——不 fail-open；比较用定长 timingSafeEqual 防时序攻击。
 const REPORT_API_TOKEN = process.env.REPORT_API_TOKEN || '';
 function reportAuthReject(req, res) {
-  if (!REPORT_API_TOKEN) return false;
+  if (!REPORT_API_TOKEN) {
+    sendJson(res, 503, { error: '运营指标接口未启用（请设置 REPORT_API_TOKEN）' });
+    return true;
+  }
   const h = req.headers['authorization'] || '';
-  if (h.startsWith('Bearer ') && h.slice(7) === REPORT_API_TOKEN) return false;
+  const provided = h.startsWith('Bearer ') ? h.slice(7) : '';
+  const a = Buffer.from(provided);
+  const b = Buffer.from(REPORT_API_TOKEN);
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return false;
   sendJson(res, 401, { error: 'invalid token' });
   return true;
 }
