@@ -851,8 +851,15 @@ function buildOriginalBase(light) {
   const ctx = baseCanvas.getContext('2d');
   paintBg(ctx, baseCanvas);
   drawCover(ctx, img, 0, 0, baseCanvas.width, baseCanvas.height, origState.off);
+  applyMosaics(ctx, baseCanvas); // 原封面盖logo 也支持框选打码（马赛克烤进底图，不含 logo）
   baseValid = true;
   composeFinal(light);
+}
+
+// 按当前 tab 重建底图（马赛克增删后用）：cover=抽帧拼图，logo=原封面。
+function rebuildBase(light) {
+  if (uiMode === 'logo') buildOriginalBase(light);
+  else stitch(light);
 }
 
 // 载入原封面（本地上传的 objectURL 或来源带来的 http 链接）。远程链接需该主机允许
@@ -864,6 +871,7 @@ function loadOriginal(src, opts) {
   img.onload = () => {
     origState.img = img;
     origState.off = { fx: 0.5, fy: 0.5, z: 1 };
+    state.mosaics = []; // 新原图 → 清掉上一张的打码框
     // switchMode:false → 只把原图载入备用，不切换到盖logo模式（从其它页带 cover 过来时用：
     // 默认还是「新作封面」从 m3u8 抽帧，操作员想用原图再手动切「原有封面盖logo」即可）。
     if (opts && opts.switchMode === false) return;
@@ -876,13 +884,17 @@ function loadOriginal(src, opts) {
 }
 
 function setUiMode(mode) {
-  uiMode = mode === 'logo' ? 'logo' : 'cover';
+  const next = mode === 'logo' ? 'logo' : 'cover';
+  // 两个 tab 底图尺寸不同、马赛克是画布坐标——换 tab 就清掉，避免旧坐标错位。
+  if (next !== uiMode) state.mosaics = [];
+  uiMode = next;
   const isLogo = uiMode === 'logo';
   [...$('uimode').children].forEach((b) => b.classList.toggle('active', b.dataset.u === uiMode));
   $('row-cover').style.display = isLogo ? 'none' : '';
   $('row-logo').style.display = isLogo ? '' : 'none';
-  // 帧相关的控件在盖logo模式下无意义，隐藏（保留 logo / 文字 / 下载）。
-  ['frames-title', 'frames', 'layout', 'orient', 'row-frameadj', 'row-mosaic', 'order-strip'].forEach((id) => {
+  // 帧相关的控件在盖logo模式下无意义，隐藏（保留 logo / 文字 / 马赛克 / 下载）。
+  // row-mosaic 不再隐藏 —— 原封面盖logo 也支持框选打码。
+  ['frames-title', 'frames', 'layout', 'orient', 'row-frameadj', 'order-strip'].forEach((id) => {
     const el = $(id); if (el) el.style.display = isLogo ? 'none' : '';
   });
   if (isLogo && origState.img) buildOriginalBase();
@@ -1368,7 +1380,7 @@ resultCanvas.addEventListener('pointermove', (e) => {
     const p = canvasPoint(e);
     mosaicDraft.x1 = p.x;
     mosaicDraft.y1 = p.y;
-    stitch(true);
+    rebuildBase(true); // logo 模式也能实时预览框选（cover 走 stitch）
     // 画框选虚线
     const ctx = resultCanvas.getContext('2d');
     const r = draftRect();
@@ -1421,7 +1433,7 @@ const endDrag = () => {
     const r = draftRect();
     if (r.w > 12 && r.h > 12) state.mosaics.push({ ...r, style: state.mosaicStyle }); // 过小的框视为误触
     mosaicDraft = null;
-    stitch();
+    rebuildBase(); // cover=重拼底图 / logo=重建原封面底图，把新马赛克烤进去
     return;
   }
   if (!drag) return;
@@ -1562,7 +1574,7 @@ $('mosaic-style').onclick = (e) => {
 $('mosaic-undo').onclick = () => {
   if (!state.mosaics.length) return;
   state.mosaics.pop();
-  stitch();
+  rebuildBase();
 };
 
 // 滚轮缩放：悬停在哪一格就缩放哪一格（放大 = 裁得更紧）
