@@ -75,6 +75,31 @@ test('aggregate counts frames/publishes per day and breaks publishes down by mod
   assert.strictEqual(noLogo.logo, '(无 logo)');
 });
 
+test('download events count per day and fold into logo detail alongside publishes', () => {
+  const dir = tmpDir();
+  // download 也带 mode+logo，且要能写读往返。
+  assert.strictEqual(logUsage({ type: 'download', mode: 'logo', logo: 'mmchigua' }, { dataDir: dir, now: new Date('2026-07-16T01:00:00Z') }), true);
+  const rows = readUsage({ dataDir: dir });
+  assert.strictEqual(rows[0].type, 'download');
+  assert.strictEqual(rows[0].logo, 'mmchigua');
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  const events = [
+    { ts: '2026-07-16T01:00:00Z', type: 'download', mode: 'logo', logo: 'mmchigua' },
+    { ts: '2026-07-16T02:00:00Z', type: 'download', mode: 'logo', logo: 'mmchigua' },
+    { ts: '2026-07-16T03:00:00Z', type: 'publish', mode: 'logo', logo: 'mmchigua' },
+    { ts: '2026-07-16T04:00:00Z', type: 'frame' },
+  ];
+  const { days, detail, totals } = aggregate(events);
+  assert.strictEqual(days[0].downloads, 2);
+  assert.strictEqual(days[0].publishes, 1);
+  assert.strictEqual(days[0].frames, 1);
+  assert.strictEqual(totals.downloads, 2);
+  // 明细 count = download + publish（该 logo 当天被用 3 次）
+  const chigua = detail.find((r) => r.logo === 'mmchigua' && r.mode === 'logo');
+  assert.strictEqual(chigua.count, 3);
+});
+
 test('modeLabel maps known modes and falls back', () => {
   assert.strictEqual(modeLabel('cover'), '新做封面');
   assert.strictEqual(modeLabel('logo'), '原有封面盖logo');

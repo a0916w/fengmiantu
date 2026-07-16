@@ -224,6 +224,17 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // 埋点：生成/下载封面。前端 canvas 本地出图，服务端无从感知，靠这个轻量 ping 记一次
+    // （这才是「用了几次」的主力来源——猫咪封面都是人工在网页做完直接下载，不走 publish）。
+    if (req.method === 'POST' && pathname === '/api/track') {
+      try {
+        const { mode, logo } = await readJsonBody(req);
+        const uiMode = mode === 'logo' ? 'logo' : (mode === 'cover' ? 'cover' : '');
+        logUsage({ type: 'download', mode: uiMode, logo: typeof logo === 'string' ? logo : '' });
+      } catch { /* 埋点失败不影响下载本身 */ }
+      return sendJson(res, 200, { ok: true });
+    }
+
     // 标准运营指标接口：运营系统(ops-report)按 /api/report/ops 通用 sections[] 契约拉取。
     // 参数 from/to(YYYY-MM-DD，缺省近90天)；Bearer REPORT_API_TOKEN 保护(未设则开放)。
     // 无需运营系统改代码——那边只加一条数据源(ops_endpoint=本地址)即可在「运营指标」页显示。
@@ -252,9 +263,10 @@ const server = http.createServer(async (req, res) => {
           columns: [
             { key: 'date', label: '日期', fmt: 'date' },
             { key: 'frames', label: '生成截图', fmt: 'int' },
+            { key: 'downloads', label: '生成/下载封面', fmt: 'int' },
             { key: 'publishes', label: '用作封面', fmt: 'int' },
           ],
-          rows: dayRows.map((d) => ({ date: d.date, frames: d.frames, publishes: d.publishes })),
+          rows: dayRows.map((d) => ({ date: d.date, frames: d.frames, downloads: d.downloads, publishes: d.publishes })),
         },
         {
           key: 'cover_workshop_detail', title: '用作封面明细 · 模式/logo', type: 'table',
@@ -300,7 +312,7 @@ const server = http.createServer(async (req, res) => {
       const events = readUsage({ sinceDays: 90 });
       const { days, detail, totals } = aggregate(events);
       const dayRows = days.slice(0, 90).map((s) =>
-        `<tr><td class="mono">${escapeHtml(s.date)}</td><td>${s.frames}</td><td style="color:var(--green)">${s.publishes}</td></tr>`).join('');
+        `<tr><td class="mono">${escapeHtml(s.date)}</td><td>${s.frames}</td><td style="color:var(--accent)">${s.downloads}</td><td style="color:var(--green)">${s.publishes}</td></tr>`).join('');
       const detailRows = detail.slice(0, 500).map((x) =>
         `<tr><td class="mono">${escapeHtml(x.date)}</td><td>${escapeHtml(x.label)}</td><td>${escapeHtml(x.logo)}</td><td style="color:var(--green)">${x.count}</td></tr>`).join('');
 
@@ -329,10 +341,10 @@ const server = http.createServer(async (req, res) => {
     <div class="logo"><span style="color:var(--accent)">📊</span> 封面使用报表</div>
     <a class="back" href="/">← 返回工具</a>
   </header>
-  <p class="sum">近 90 天 · 生成截图 ${totals.frames} 张 · 用作封面 ${totals.publishes} 次</p>
+  <p class="sum">近 90 天 · 生成截图 ${totals.frames} 张 · 生成/下载封面 ${totals.downloads} 次 · 用作封面 ${totals.publishes} 次</p>
   <h2 class="sec">按天汇总</h2>
-  <div class="card">${dayRows ? `<table><thead><tr><th>日期</th><th>生成截图</th><th>用作封面</th></tr></thead><tbody>${dayRows}</tbody></table>` : '<div class="empty">暂无数据</div>'}</div>
-  <h2 class="sec">用作封面明细 · 按天 / 模式 / logo</h2>
+  <div class="card">${dayRows ? `<table><thead><tr><th>日期</th><th>生成截图</th><th>生成/下载封面</th><th>用作封面</th></tr></thead><tbody>${dayRows}</tbody></table>` : '<div class="empty">暂无数据</div>'}</div>
+  <h2 class="sec">封面产出明细 · 按天 / 模式 / logo（哪个 logo 用了几次）</h2>
   <div class="card">${detailRows ? `<table><thead><tr><th>日期</th><th>模式(tab)</th><th>logo</th><th>次数</th></tr></thead><tbody>${detailRows}</tbody></table>` : '<div class="empty">暂无记录</div>'}</div>
 </div></body></html>`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'no-referrer' });

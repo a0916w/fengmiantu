@@ -1783,6 +1783,14 @@ $('download-sm').onclick = () => {
   a.download = `cover-${exportSize().exW}x${exportSize().exH}-${Date.now()}.jpg`;
   a.click();
   URL.revokeObjectURL(a.href);
+  // 埋点：记一次「生成/下载封面」(带 tab + logo)，供 /report 统计。fire-and-forget，失败不影响下载。
+  try {
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: uiMode, logo: state.logoName || '' }),
+    }).catch(() => {});
+  } catch { /* ignore */ }
 };
 
 $('uimode').onclick = (e) => {
