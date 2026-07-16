@@ -19,6 +19,17 @@ const { logUsage, readUsage, aggregate } = require('./lib/usage');
 
 const PORT = process.env.PORT || 3000;
 
+// 运营指标接口 /api/report/ops 的 Bearer 口令（与响脱AI 等一致的 provider 契约）。
+// 未设置则开放（便于本地/未接入时）。运营系统(ops-report)按此拉取。
+const REPORT_API_TOKEN = process.env.REPORT_API_TOKEN || '';
+function reportAuthReject(req, res) {
+  if (!REPORT_API_TOKEN) return false;
+  const h = req.headers['authorization'] || '';
+  if (h.startsWith('Bearer ') && h.slice(7) === REPORT_API_TOKEN) return false;
+  sendJson(res, 401, { error: 'invalid token' });
+  return true;
+}
+
 // 报表页访问口令。未设置则 /report 关闭（返回提示），避免默认裸奔。
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 function verifyAdminToken(token) {
@@ -207,15 +218,53 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 使用报表 JSON：给运营系统(ops-report)日同步拉取。ADMIN_TOKEN 保护，?days=N（默认 90）。
-    if (req.method === 'GET' && pathname === '/api/usage-report') {
+    // 标准运营指标接口：运营系统(ops-report)按 /api/report/ops 通用 sections[] 契约拉取。
+    // 参数 from/to(YYYY-MM-DD，缺省近90天)；Bearer REPORT_API_TOKEN 保护(未设则开放)。
+    // 无需运营系统改代码——那边只加一条数据源(ops_endpoint=本地址)即可在「运营指标」页显示。
+    if (req.method === 'GET' && pathname === '/api/report/ops') {
+      if (reportAuthReject(req, res)) return;
       const u = new URL(req.url, 'http://localhost');
-      if (!verifyAdminToken(u.searchParams.get('token'))) {
-        return sendJson(res, ADMIN_TOKEN ? 403 : 503, { error: ADMIN_TOKEN ? '口令错误' : '报表未启用（未设 ADMIN_TOKEN）' });
+      const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      let from = (u.searchParams.get('from') || '').trim();
+      let to = (u.searchParams.get('to') || '').trim();
+      const today = new Date().toISOString().slice(0, 10);
+      if (!from && !to) {
+        to = today;
+        from = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
+      } else if (!DATE_RE.test(from) || !DATE_RE.test(to) || from > to) {
+        return sendJson(res, 400, { error: 'from & to (YYYY-MM-DD) required, from<=to' });
       }
-      const days = Math.min(3650, Math.max(1, parseInt(u.searchParams.get('days'), 10) || 90));
-      const { days: dayRows, detail, totals } = aggregate(readUsage({ sinceDays: days }));
-      return sendJson(res, 200, { since_days: days, totals, days: dayRows, detail });
+      // 取区间内事件再聚合。
+      const events = readUsage({ sinceDays: 3650 }).filter((e) => {
+        const d = String(e.ts).slice(0, 10);
+        return d >= from && d <= to;
+      });
+      const { days: dayRows, detail } = aggregate(events);
+      const sections = [
+        {
+          key: 'cover_workshop_daily', title: '封面工坊 · 按天', type: 'table',
+          columns: [
+            { key: 'date', label: '日期', fmt: 'date' },
+            { key: 'frames', label: '生成截图', fmt: 'int' },
+            { key: 'publishes', label: '用作封面', fmt: 'int' },
+          ],
+          rows: dayRows.map((d) => ({ date: d.date, frames: d.frames, publishes: d.publishes })),
+        },
+        {
+          key: 'cover_workshop_detail', title: '用作封面明细 · 模式/logo', type: 'table',
+          columns: [
+            { key: 'date', label: '日期', fmt: 'date' },
+            { key: 'label', label: '模式', fmt: 'text' },
+            { key: 'logo', label: 'logo', fmt: 'text' },
+            { key: 'count', label: '次数', fmt: 'int' },
+          ],
+          rows: detail.map((x) => ({ date: x.date, label: x.label, logo: x.logo, count: x.count })),
+        },
+      ];
+      return sendJson(res, 200, {
+        project_code: (u.searchParams.get('project_code') || '').trim(),
+        from, to, timezone: 'UTC', sections,
+      });
     }
 
     // 使用报表：按天统计「生成截图数 / 用作封面数」，用作封面再按 tab(模式) + logo 明细。
