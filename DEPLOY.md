@@ -54,7 +54,7 @@ export COVER_CALLBACK_HOSTS=mm.你的webmm域名.com
 export PORT=3000
 
 # —— 多项目 API + 后台（新）——
-export ADMIN_TOKEN=<强随机串>          # 访问 /queue /projects /logos 及管理 API 的口令
+export ADMIN_TOKEN=<强随机串>          # 访问 /report 使用报表 及管理 API 的口令；不设则报表页关闭
 export FENGMIANTU_CONCURRENCY=2        # 队列并发（同时处理几个封面任务）
 export FFMPEG_MAX_CONCURRENCY=4        # 全局 ffmpeg 抽帧并发闸（手动+队列合计上限）
 # export DATA_DIR=/opt/fengmiantu/data   # 可选，默认项目目录下 data/

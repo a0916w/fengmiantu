@@ -278,6 +278,7 @@
   <div class="topbar">
     <h1><span class="logo">🎬</span>使用w封面工坊</h1>
     <span class="sub">粘贴 m3u8 链接 · 智能选帧 · 三张拼成一张封面</span>
+    <a href="/report" target="_blank" style="margin-left:auto;font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--border);padding:5px 11px;border-radius:8px">📊 使用报表</a>
   </div>
 
   <!-- 自由裁剪弹窗 -->
@@ -1825,7 +1826,7 @@ $('use-cover').onclick = async () => {
     const routeLogo = PICK.get('logo') || state.logoName || '';
     const r = await fetch('/api/publish', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image, external_id: PICK_EXTERNAL, callback: PICK_CALLBACK, logo: routeLogo }),
+      body: JSON.stringify({ image, external_id: PICK_EXTERNAL, callback: PICK_CALLBACK, logo: routeLogo, mode: uiMode }),
     });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.error || j.detail || '上传失败');
