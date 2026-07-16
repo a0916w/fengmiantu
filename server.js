@@ -15,7 +15,7 @@ const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/m
 const LOGOS_DIR = path.join(__dirname, 'logos');
 const { uploadCover, publishUploadConfig, publishCallbackHosts } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, httpGetImage, callbackAllowed } = require('./lib/net');
-const { logUsage, readUsage, aggregate } = require('./lib/usage');
+const { logUsage, readUsage, aggregate, filePath: usageFilePath, DEFAULT_DIR: USAGE_DIR } = require('./lib/usage');
 
 const PORT = process.env.PORT || 3000;
 
@@ -233,6 +233,32 @@ const server = http.createServer(async (req, res) => {
         logUsage({ type: 'download', mode: uiMode, logo: typeof logo === 'string' ? logo : '' });
       } catch { /* 埋点失败不影响下载本身 */ }
       return sendJson(res, 200, { ok: true });
+    }
+
+    // 埋点诊断：不用 SSH 就能看数据文件到底能不能写、有多少条、最近几条。?token=ADMIN_TOKEN。
+    // 「报表不更新」时开这个网址就知道是「没写进去(权限/属主)」还是「压根没触发埋点」。
+    if (req.method === 'GET' && pathname === '/api/usage-debug') {
+      const u = new URL(req.url, 'http://localhost');
+      if (!verifyAdminToken(u.searchParams.get('token') || '')) return sendJson(res, 401, { error: 'bad token' });
+      const fp = usageFilePath();
+      let exists = false, size = 0, dirWritable = false, err = null;
+      try { const st = fs.statSync(fp); exists = true; size = st.size; } catch {}
+      try { fs.mkdirSync(USAGE_DIR, { recursive: true }); fs.accessSync(USAGE_DIR, fs.constants.W_OK); dirWritable = true; } catch (e) { err = String((e && e.message) || e); }
+      const all = readUsage();
+      return sendJson(res, 200, {
+        data_dir: USAGE_DIR,
+        file: fp,
+        file_exists: exists,
+        file_size: size,
+        dir_writable: dirWritable,
+        write_error: err,
+        total_events: all.length,
+        by_type: all.reduce((m, e) => ((m[e.type] = (m[e.type] || 0) + 1), m), {}),
+        last5: all.slice(-5),
+        process_uid: typeof process.getuid === 'function' ? process.getuid() : null,
+        process_user: process.env.USER || process.env.LOGNAME || null,
+        now_utc: new Date().toISOString(),
+      });
     }
 
     // 标准运营指标接口：运营系统(ops-report)按 /api/report/ops 通用 sections[] 契约拉取。
