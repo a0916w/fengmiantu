@@ -278,7 +278,7 @@
   <div class="topbar">
     <h1><span class="logo">🎬</span>使用w封面工坊</h1>
     <span class="sub">粘贴 m3u8 链接 · 智能选帧 · 三张拼成一张封面</span>
-    <a href="/report" target="_blank" style="margin-left:auto;font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--border);padding:5px 11px;border-radius:8px">📊 使用报表</a>
+    <a href="/report" onclick="event.preventDefault();var t=prompt('请输入报表访问口令',localStorage.getItem('fm_report_token')||'');if(t){localStorage.setItem('fm_report_token',t);window.open('/report?token='+encodeURIComponent(t),'_blank');}" style="margin-left:auto;font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--border);padding:5px 11px;border-radius:8px">📊 使用报表</a>
   </div>
 
   <!-- 自由裁剪弹窗 -->
