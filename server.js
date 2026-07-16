@@ -207,6 +207,17 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // 使用报表 JSON：给运营系统(ops-report)日同步拉取。ADMIN_TOKEN 保护，?days=N（默认 90）。
+    if (req.method === 'GET' && pathname === '/api/usage-report') {
+      const u = new URL(req.url, 'http://localhost');
+      if (!verifyAdminToken(u.searchParams.get('token'))) {
+        return sendJson(res, ADMIN_TOKEN ? 403 : 503, { error: ADMIN_TOKEN ? '口令错误' : '报表未启用（未设 ADMIN_TOKEN）' });
+      }
+      const days = Math.min(3650, Math.max(1, parseInt(u.searchParams.get('days'), 10) || 90));
+      const { days: dayRows, detail, totals } = aggregate(readUsage({ sinceDays: days }));
+      return sendJson(res, 200, { since_days: days, totals, days: dayRows, detail });
+    }
+
     // 使用报表：按天统计「生成截图数 / 用作封面数」，用作封面再按 tab(模式) + logo 明细。
     // 口令保护：需 ?token= 与 ADMIN_TOKEN 一致；未设 ADMIN_TOKEN 则整页关闭。
     if (req.method === 'GET' && pathname === '/report') {
