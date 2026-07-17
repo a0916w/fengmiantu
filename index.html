@@ -1889,12 +1889,12 @@ $('use-cover').onclick = async () => {
     if (typeof syncTextControls === 'function') syncTextControls();
   }
 
-  if (PICK_EXTERNAL && PICK_CALLBACK) {
-    const b = $('use-cover');
-    b.style.display = '';
-    // 带了原封面就走盖logo模式，不自动抽帧生成；否则老流程自动生成。
-    if (m3u8 && typeof generate === 'function') generate(); // 即使带了 cover 也默认从 m3u8 自动生成新封面
-  }
+  // 从后台带回调参数进来才亮「用作封面」按钮（能回写项目）。
+  if (PICK_EXTERNAL && PICK_CALLBACK) $('use-cover').style.display = '';
+
+  // 只要带了 m3u8 就【直接生成封面】——不管有没有传 cover、有没有回调参数。
+  // (cover 已在上面 loadOriginal 载入备用，操作员想用原图再手动切「原有封面盖logo」即可。)
+  if (m3u8 && typeof generate === 'function') generate();
 })();
 
 </script>
