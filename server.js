@@ -15,7 +15,7 @@ const { isAllowedUrl, probeDuration, captureFrame, pickTime } = require('./lib/m
 const LOGOS_DIR = path.join(__dirname, 'logos');
 const { uploadCover, publishUploadConfig, publishCallbackHosts } = require('./lib/upload');
 const { readJsonBody, sendJson, decodeDataUrl, httpPostJson, httpGetImage, callbackAllowed } = require('./lib/net');
-const { logUsage, readUsage, aggregate } = require('./lib/usage');
+const { logUsage, readUsage, aggregate, dayOf } = require('./lib/usage');
 
 const PORT = process.env.PORT || 3000;
 
@@ -244,16 +244,16 @@ const server = http.createServer(async (req, res) => {
       const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
       let from = (u.searchParams.get('from') || '').trim();
       let to = (u.searchParams.get('to') || '').trim();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = dayOf(Date.now()); // 马来西亚(UTC+8)当天
       if (!from && !to) {
         to = today;
-        from = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
+        from = dayOf(Date.now() - 89 * 86400000);
       } else if (!DATE_RE.test(from) || !DATE_RE.test(to) || from > to) {
         return sendJson(res, 400, { error: 'from & to (YYYY-MM-DD) required, from<=to' });
       }
-      // 取区间内事件再聚合。
+      // 取区间内事件再聚合（按马来西亚日期过滤，和聚合口径一致）。
       const events = readUsage({ sinceDays: 3650 }).filter((e) => {
-        const d = String(e.ts).slice(0, 10);
+        const d = dayOf(e.ts);
         return d >= from && d <= to;
       });
       const { days: dayRows, detail } = aggregate(events);
@@ -281,7 +281,7 @@ const server = http.createServer(async (req, res) => {
       ];
       return sendJson(res, 200, {
         project_code: (u.searchParams.get('project_code') || '').trim(),
-        from, to, timezone: 'UTC', sections,
+        from, to, timezone: 'Asia/Kuala_Lumpur', sections,
       });
     }
 
