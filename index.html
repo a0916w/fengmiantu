@@ -351,8 +351,8 @@
         </label>
       </div>
       <div class="ctl-row" id="row-frameadj">
-        <label class="numctl" title="高清锐利化强度：0 关闭，0.8 适中，2 最强">锐化
-          <input type="number" id="sharpen-amt" min="0" max="2" step="0.1" value="0.8">
+        <label class="numctl" title="高清锐利化强度：0 关闭，0.5 默认（偏柔和），0.8 偏锐，2 最强">锐化
+          <input type="number" id="sharpen-amt" min="0" max="2" step="0.1" value="0.5">
         </label>
         <label class="numctl" title="裁掉每帧顶部的百分比，去顶部水印">裁顶
           <input type="number" id="crop-top" min="0" max="20" step="0.5" value="12"><span>%</span>
@@ -428,7 +428,7 @@ const state = {
   slots: [null, null, null],           // 卡槽：每格存候选帧下标，数量随布局变化
   offsets: [],                         // 每格取景偏移 {fx, fy, z}，拖动/滚轮调整
   crops: [],                           // 每格自由裁剪 {x,y,w,h}（0~1 比例，默认全图）
-  sharpenAmt: 0.8,                     // 整图锐化强度（0 关闭 ~ 2 最强）
+  sharpenAmt: 0.5,                     // 整图锐化强度（0 关闭 ~ 2 最强）。默认调柔和些，太锐会显噪点
   orient: 'h',                         // 封面方向：h 横版 640×360 / v 直版 540×720
   texts: [],                           // 文字字段 [{text, sizePct, style, fx, fy}]，位置在预览上拖
   activeText: -1,                      // 当前选中的字段下标
